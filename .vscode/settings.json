@@ -66,5 +66,5 @@
     "explorer.fileNesting.patterns": {
         "*.sln": "*.csproj"
     },
-    "dotnet.defaultSolution": "AH_VisualNovel.slnx"
+    "dotnet.defaultSolution": "HT-Avoid.slnx"
 }
