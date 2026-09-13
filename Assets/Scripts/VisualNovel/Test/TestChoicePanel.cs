@@ -52,7 +52,7 @@ namespace TESTING
             "Matta' Fact- I'm blind in my left eye and 43% blind in my right eye."
             };
 
-            panel.Show("¿Ö ¾ÈµÇ´Â °ÅÁö??", choices);
+            panel.Show("ì´ê²Œ ì§„í–‰ë˜ëŠ”ê±° ë§ë‚˜ìš”???", choices);
 
             while (panel.isWaitingOnUserChoice)
                 yield return null;

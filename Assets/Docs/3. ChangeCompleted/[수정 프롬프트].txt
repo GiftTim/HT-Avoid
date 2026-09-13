@@ -27,4 +27,4 @@
 	- 주의할 점에 대해서 적어
 
  3. 저장
-	 Asset\Docs\2. ChangePlan 폴더에 [YY.MM.DD_HH.mm] 형식 (한국시간 KST 기준) 으로 서두를 붙인 이름으로 저장해줘
+	Assets/Docs/3. ChangeCompleted 폴더에 [YY.MM.DD_HH.mm] 형식 (한국시간 KST 기준) 으로 서두를 붙인 이름으로 저장해줘
