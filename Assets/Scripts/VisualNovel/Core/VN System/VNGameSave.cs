@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using DIALOGUE;
 using History;
-using Unity.VisualScripting;
 using UnityEngine;
 
 namespace VISUALNOVEL
@@ -14,7 +13,8 @@ namespace VISUALNOVEL
 
         public const string FILE_TYPE = ".vns";
         public const string SCREENSHOT_FILE_TYPE = ".jpg";
-        public const bool ENCRYPT_FILES = false;
+        public const bool ENCRYPT_FILES = true;
+        private const string ENCRYPTION_PASSWORD = "HT-Avoid_SaveKey"; // TODO: 추후 빌드 시점 주입 등으로 교체 검토 (h절 참고)
 
         public string filePath => $"{FilePaths.gameSaves}{slotNumber}{FILE_TYPE}";
         public string screenshotPath => $"{FilePaths.gameSaves}{slotNumber}{SCREENSHOT_FILE_TYPE}";
@@ -35,8 +35,19 @@ namespace VISUALNOVEL
             activeConversations = GetConversationData();
             variables = GetVariableData();
 
-            string saveJSON = JsonUtility.ToJson(this);
-            FileManager.Save(filePath, saveJSON);
+            ES3.Save<VNGameSave>("gameSave", this, filePath, GetSettings());
+        }
+
+        public static VNGameSave LoadFromDisk(string path)
+        {
+            return ES3.Load<VNGameSave>("gameSave", path, GetSettings());
+        }
+
+        private static ES3Settings GetSettings()
+        {
+            return ENCRYPT_FILES
+                ? new ES3Settings(ES3.EncryptionType.AES, ENCRYPTION_PASSWORD)
+                : new ES3Settings();
         }
 
         public void Load()
@@ -150,6 +161,7 @@ namespace VISUALNOVEL
         private VN_VariableData[] GetVariableData()
         {
             List<VN_VariableData> returnData = new List<VN_VariableData>();
+            
             foreach (var database in VariableStore.databases.Values)
             {
                 foreach (var variable in database.variables)

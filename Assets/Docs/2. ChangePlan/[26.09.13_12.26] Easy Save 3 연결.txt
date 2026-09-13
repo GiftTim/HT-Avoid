@@ -1,0 +1,209 @@
+================================================================
+Easy Save 3 연결
+작성일 : 2026-09-13 12:26 (KST)
+================================================================
+
+[목차]
+  a. 목차
+  b. 요구한 기능
+  c. 현재 상황 및 코드
+  d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+  e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+  f. 어떤 순서로 진행할 것인지
+  g. 어디가 어떤 식으로 변경되는지
+  h. 주의할 점
+
+
+================================================================
+b. 요구한 기능
+================================================================
+
+  1. 다운로드한 Easy Save 3(ES3) 에셋을 기존 세이브 시스템
+     (VNGameSave / FileManager)에 어떻게 연결하는지
+  2. 연결하면 실제 저장/불러오기 흐름이 어떻게 바뀌는지
+  3. [1. Plan]/게임 기획 및 개발 로드맵.txt 상 앞으로 피하기 게임/
+     스킬(카드)/인벤토리까지 추가될 예정인데, 세이브 시스템(암호화)을
+     지금(1단계, VN 완성 시점) 붙이는 게 타이밍상 맞는지 검토
+
+
+================================================================
+c. 현재 상황 및 코드
+================================================================
+
+  [ ES3 임포트 상태 ]
+  - Assets/Plugins/Easy Save 3/ 에 정상 임포트됨 (Scripts 하위 171개
+    .cs 파일 확인, ES3.cs / ES3Crypto.cs / ES3Settings 등 핵심 스크립트 존재)
+  - Assets/Plugins/Easy Save 3/Resources/ES3/ES3Defaults.asset : ES3
+    전역 기본 설정 에셋 (Tools > Easy Save 3 > Settings 로 편집 가능,
+    이번 작업에서는 건드리지 않음 — h절 참고)
+  - Editor/PlayMaker 관련 asmdef 일부는 .disabled 상태 (미사용, 문제 없음)
+
+  [ 기존 세이브 코드 흐름 ]
+  - VNGameSave.cs (Assets/Scripts/VisualNovel/Core/VN System/)
+    · [System.Serializable] 클래스, static activeFile 하나만 유지
+    · Save() : HistoryState/대화 진행상황/VariableStore 값을 필드에
+      채운 뒤 JsonUtility.ToJson(this) 로 JSON 문자열을 만들고
+      FileManager.Save(filePath, saveJSON) 호출 (평문 텍스트로 저장)
+    · Load() : activeState/historyLog/variables 등 필드에 이미 값이
+      채워져 있다는 전제 하에, 그 값을 HistoryManager/VariableStore/
+      ConversationManager 등 런타임 상태로 되돌리는 역할만 함
+      (파일에서 읽어오는 건 이 메서드 담당이 아님)
+    · public const bool ENCRYPT_FILES = false; 상수가 이미 존재하지만
+      실제로 어디에서도 참조되지 않는 미사용 상태 (자리만 파여있음)
+  - FileManager.cs (Assets/Scripts/VisualNovel/Core/IO/)
+    · Save(filePath, json) : StreamWriter로 평문 텍스트 파일 저장
+    · Load<T>(filePath) : File.ReadAllLines 로 첫 줄을 읽어
+      JsonUtility.FromJson<T> 로 역직렬화 (암호화/복호화 없음)
+    · ReadTextFile / ReadTextAsset 은 대화 대본(.txt) 로딩에도 쓰이는
+      범용 메서드라 세이브 전용이 아님 (이번 변경에서 건드리지 않음)
+  - 실제 Save/Load(파일 단위)를 호출하는 곳은 프로젝트 전체에 딱 두
+    군데뿐:
+    · VNGameSave.cs:39  FileManager.Save(filePath, saveJSON)
+    · TestGameSave.cs:22 FileManager.Load<VNGameSave>($"{FilePaths.
+      gameSaves}1{VNGameSave.FILE_TYPE}")
+  - 즉 현재는 세이브 파일이 암호화되지 않은 평문 JSON(.vns 확장자)
+    상태로 Assets/appdata/Save Files/ (에디터 기준) 에 저장됨
+
+  [ 참고 계획 ]
+  - Assets/Docs/1. Plan/[26.09.13_07.38] 게임 기획 및 개발 로드맵.txt
+    · h절에 "VNGameSave : 사이클 진행도, 보유 카드, 장착 구성 등도
+      함께 저장해야 함 → 기존 세이브 데이터 구조 확장 필요"라고
+      이미 명시되어 있음
+    · 개발 우선순위 5단계 중 1단계가 "VisualNovel 완성"이며, 세이브
+      시스템은 VN 엔진의 일부이므로 이 단계 범위에 포함됨
+
+
+================================================================
+d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+================================================================
+
+  기존 JsonUtility 기반 수동 직렬화를 걷어내고, ES3가 VNGameSave
+  객체 자체를 통째로 직렬화·암호화·파일 입출력까지 전부 맡도록 한다.
+  (VNGameSave와 그 하위 타입 HistoryState / VN_VariableData /
+  VN_ConversationData 모두 이미 [System.Serializable]이 붙어있어
+  ES3의 리플렉션 기반 직렬화로 바로 처리 가능함을 확인함)
+
+  1) VNGameSave.cs
+     - ENCRYPT_FILES 를 true로 변경 (자리만 있던 상수를 실제로 사용)
+     - private static ES3Settings GetSettings() 헬퍼 추가
+       → ENCRYPT_FILES가 true면 AES 암호화 설정을, false면 기본
+         설정을 반환
+     - Save() 내부의 "JsonUtility.ToJson(this)" + "FileManager.Save(...)"
+       두 줄을 "ES3.Save<VNGameSave>("gameSave", this, filePath,
+       GetSettings())" 한 줄로 교체
+     - 정적 메서드 VNGameSave LoadFromDisk(string path) 신규 추가
+       → 내부에서 ES3.Load<VNGameSave>("gameSave", path, GetSettings())
+         호출 후 반환
+
+  2) TestGameSave.cs
+     - "FileManager.Load<VNGameSave>($"{FilePaths.gameSaves}1
+       {VNGameSave.FILE_TYPE}")" 호출을
+       "VNGameSave.LoadFromDisk($"{FilePaths.gameSaves}1
+       {VNGameSave.FILE_TYPE}")" 로 교체
+
+  3) FileManager.cs / FilePaths.cs
+     - 변경 없음 (대화 대본 로딩용 메서드는 세이브와 무관하므로 유지)
+
+
+================================================================
+e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+================================================================
+
+  [ 대안 1 : 기존 JsonUtility 문자열은 그대로 두고, 그 문자열만
+    ES3로 암호화해서 저장 ]
+    - FileManager.Save/Load 호출부만 ES3.Save<string>/ES3.Load<string>
+      로 바꾸고, VNGameSave 내부의 JsonUtility.ToJson/FromJson 로직은
+      그대로 유지
+    - 장점 : 변경 범위가 더 작음
+    - 단점 : JsonUtility로 한 번 직렬화한 문자열을 ES3가 또 감싸는
+      이중 직렬화 구조가 되어 비효율적이고, ES3가 제공하는 타입별
+      자동 처리 기능을 전혀 못 씀 → 기각
+
+  [ 대안 2 (채택) : ES3가 VNGameSave 객체 자체를 직접 직렬화 ]
+    - JsonUtility를 완전히 걷어내고 ES3 하나가 직렬화+암호화+파일
+      입출력을 전부 담당
+    - 장점 : 중복 직렬화 제거, 코드가 더 단순해짐, 앞으로 피하기/RPG용
+      필드(사이클 진행도, 카드 인벤토리 등)가 VNGameSave에 추가되어도
+      ES3 연결 부분은 다시 손댈 필요 없이 자동으로 같이 저장됨
+    - 단점 : 대안 1보다 건드리는 코드가 조금 더 많음 (감수 가능한 수준)
+    → 이번 작업에서 채택
+
+  [ 대안 3 : ES3가 기본 제공하는 Save Slots UI/시스템 도입
+    (Assets/Plugins/Easy Save 3/Scripts/Save Slots/Easy Save Slots
+    Canvas.prefab) ]
+    - 장점 : 세이브 슬롯 UI를 처음부터 새로 안 만들어도 됨
+    - 단점 : 이미 자체 slotNumber 기반 VNGameSave 구조가 있는데, ES3의
+      슬롯 시스템까지 도입하면 두 체계가 중복/충돌할 위험이 큼. 세이브/
+      로드 UI 자체는 이번 로드맵 5단계 우선순위에 없는 항목(메뉴 Phase는
+      현재 5단계에 명시되어 있지 않음)이라 지금 범위에서 벗어남
+    → 이번 작업 범위에서 제외, 나중에 세이브/로드 UI를 실제로 만들
+      때 재검토
+
+
+================================================================
+f. 어떤 순서로 진행할 것인지
+================================================================
+
+  1. VNGameSave.cs : ENCRYPT_FILES = true 로 변경, GetSettings() 헬퍼 추가
+  2. VNGameSave.Save() 를 ES3.Save<VNGameSave>(...) 호출로 교체
+  3. VNGameSave.LoadFromDisk(string path) 정적 메서드 신규 추가
+     (ES3.Load<VNGameSave>(...) 사용)
+  4. TestGameSave.cs 의 로드 호출부를 VNGameSave.LoadFromDisk(...) 로 교체
+  5. VisualNovel 씬에서 TestGameSave로 실제 저장 → 불러오기 왕복 테스트
+     - 저장 직후 Assets/appdata/Save Files/ 안의 .vns 파일을 텍스트
+       편집기로 열어 평문이 안 보이는지(암호화됐는지) 확인
+     - 다시 불러와서 대화 진행상황/변수 값이 정상 복원되는지 확인
+  6. 문제 없으면 완료. FileManager.Save/Load<T> 제네릭 메서드는 이제
+     세이브 용도로는 안 쓰이게 되지만, 다른 참조가 없는지 다시 확인한
+     뒤 필요하면 별도로 정리(이번 ChangePlan 범위 밖, 후속 작업으로 분리)
+
+
+================================================================
+g. 어디가 어떤 식으로 변경되는지
+================================================================
+
+  - Assets/Scripts/VisualNovel/Core/VN System/VNGameSave.cs
+    · ENCRYPT_FILES 상수 값 변경 (false → true)
+    · Save() 메서드 내부 로직 교체 (JsonUtility+FileManager → ES3.Save)
+    · LoadFromDisk(string) 정적 메서드 신규 추가
+    · GetSettings() private 정적 메서드 신규 추가
+
+  - Assets/Scripts/VisualNovel/Test/TestGameSave.cs
+    · 로드 호출부 1줄 교체 (FileManager.Load<VNGameSave> →
+      VNGameSave.LoadFromDisk)
+
+  - 신규 파일 없음 (기존 파일 2개만 수정)
+  - Assets/Plugins/Easy Save 3/Resources/ES3/ES3Defaults.asset 은
+    건드리지 않음 (코드에서 ES3Settings를 매번 명시적으로 넘기는
+    방식을 쓰기 때문 — 나중에 전역 기본값으로 일원화하고 싶어지면
+    이 에셋을 대신 사용하도록 바꿀 수 있음)
+
+
+================================================================
+h. 주의할 점
+================================================================
+
+  ■ 3번 질문("지금 저장 기능을 추가하는 게 맞는지")에 대한 결론 : 맞음
+    이번 변경은 "무엇을 저장할지"(데이터 스키마)가 아니라 "저장을
+    어떻게 파일에 쓰고 암호화할지"(파일 I/O 계층)만 건드림. 앞으로
+    2~5단계(피하기/스킬/인벤토리/보스)에서 VNGameSave에 필드(사이클
+    진행도, 카드 목록, 장착 구성 등)가 추가되더라도 ES3는 리플렉션으로
+    자동 처리하므로 이 배선을 다시 손볼 필요가 없음. 오히려 지금
+    미리 잡아두면 나중에 필드만 추가하면 되는 구조가 됨
+
+  ■ 암호화 비밀번호를 코드에 하드코딩하면 디컴파일 시 노출될 수 있음.
+    싱글플레이 프로젝트라 치트 방지가 핵심 목적은 아니므로 지금은
+    감수하되, 나중에 필요해지면 빌드 시점 주입 등으로 개선 가능
+
+  ■ 기존에 테스트로 만들어둔 평문 .vns 세이브 파일과는 호환되지
+    않음 (암호화 방식이 바뀌므로). 테스트 단계라 데이터 유실 걱정은
+    없지만, 기존 테스트 세이브 파일은 새로 다시 만들어야 함
+
+  ■ Anti-Cheat Toolkit은 이번 작업 범위에 포함하지 않음 (싱글플레이
+    프로젝트라 우선순위 낮음으로 이미 결론남 — 필요 시 나중에 특정
+    값에만 선택적으로 적용 검토)
+
+  ■ 앞으로 VNGameSave에 새 필드를 추가할 때는 반드시 [System.
+    Serializable] 을 유지해야 ES3가 인식할 수 있음
+
+================================================================
