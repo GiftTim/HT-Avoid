@@ -1,0 +1,438 @@
+================================================================
+피하기 게임 기초 구조 및 VN 연결
+작성일 : 2026-09-14 20:24 (KST)
+================================================================
+
+[목차]
+  a. 목차
+  b. 요구한 기능
+  c. 현재 상황 및 코드
+  d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+  e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+  f. 어떤 순서로 진행할 것인지
+  g. 어디가 어떤 식으로 변경되는지
+  h. 주의할 점
+
+
+================================================================
+b. 요구한 기능
+================================================================
+
+  로드맵 2단계("피하기 게임 캐릭터 인터페이스 및 VN 연결")의 최초
+  뼈대를 만든다. 범위는 아래 3가지로 확정(26.09.14 설계 대화, 그 중
+  1./3.은 최초 초안 작성 후 같은 날 사용자가 다시 수정 지시함 — h절
+  "변경 이력" 참고):
+
+  1. 피하기 게임의 화면 구성 (26.09.14 최종) : 사이드스크롤 플랫폼
+     (메이플스토리 형식) — 좌우 이동 + 점프(중력 있음), 마우스 조준
+     공격, 좌우 박스 벽에 막히는 경계
+  2. VN ↔ 피하기 게임의 씬 레벨 연결 방식 : 애디티브 씬 로딩
+  3. "캐릭터 인터페이스" (26.09.14 최종) : VN 캐릭터(Lia/Mari/Mina/
+     Rachel/Raelin 등)는 피하기 게임에서 "보스"로 등장한다. 주인공
+     (플레이어)은 VN 로스터와 무관한 별도의 고정 캐릭터 1인이며,
+     주인공이 VN 캐릭터(보스)의 공격을 피하고 공격하는 형식
+
+  보스 HP/패턴/탄막 스포너/히트박스 판정 방식/카드(스킬) 연동은 각각
+  3~5단계 및 후속 ChangePlan에서 다룸 (h절 참고, 이번 범위 아님)
+
+
+================================================================
+c. 현재 상황 및 코드
+================================================================
+
+  [ 씬 구조 ]
+  - Assets/Scenes/VisualNovel.unity 하나만 존재. Avoid 전용 씬
+    (Assets/Scenes/Avoid.unity)은 아직 없음 — 이동 로직(MovementRigidbody2D
+    /AvoidPlayerController)만 작성됐고 나머지 스크립트는 미작성, 씬
+    파일도 에디터에서 만들어야 함 (아래 "코드 상태" 및 g절 "에디터
+    작업" 참고)
+
+  [ 싱글톤 매니저 생존 범위 ]
+  - DialogueSystem, CharacterManager, HistoryManager, VariableStore
+    등 VN 핵심 싱글톤은 전부 DontDestroyOnLoad 처리가 안 되어 있고
+    VisualNovel.unity 씬 안에서만 존재함
+  - Assets/Scripts/VisualNovel/Core/Audio/AudioManager.cs 만 유일하게
+    DontDestroyOnLoad 사용 중
+  → 즉 SceneManager.LoadScene(단일 모드)으로 씬을 완전히 교체하면
+    이 싱글톤들이 전부 파괴됨 (d절에서 애디티브 로딩을 채택한 근거)
+
+  [ 커맨드 시스템 ]
+  - Assets/Scripts/VisualNovel/Core/Commands/Database/
+    CMD_DatabaseExtension.cs 를 상속한 클래스에 정적 Extend(CommandDatabase)
+    메서드를 만들고 그 안에서 database.AddCommand(이름, 델리게이트)로
+    등록하면 리플렉션이 자동으로 스캔해 등록함 (수동 등록 불필요)
+  - 기존 예시 : Extensions/CMD_DatabaseExtension_General.cs 의
+    "showui"/"hideui" 명령이 DialogueSystem.instance.Show(speed, immediate)
+    / Hide(speed, immediate) 를 그대로 호출하는 구조 (재사용 가능)
+  - 명령 델리게이트는 Func<string[], IEnumerator> 형태를 쓰면 코루틴
+    안에서 yield로 씬 로딩 완료를 기다릴 수 있음 (LoadNewDialogueFile
+    등은 Action이지만, ShowDialogueBox 등은 IEnumerator 반환)
+
+  [ 캐릭터 데이터 ]
+  - Assets/Scripts/VisualNovel/Core/Characters/CharacterConfigData.cs
+    는 VN 대사창 표시용 데이터만 가짐 (name/alias/characterType/
+    nameColor/dialogueColor/폰트/스프라이트 딕셔너리). 이동속도,
+    히트박스, 전투 애니메이션 같은 게임플레이 스탯 필드는 없음
+  - Assets/Resources/Characters/<이름>/Character-[이름].prefab 구조로
+    캐릭터별 폴더가 이미 존재 (Generic/Lia/Mari/Mina/Rachel/Raelin)
+  - Character.cs 의 CharacterType enum (Text/Sprite/Live2D/Model3D)은
+    VN 표시 방식 구분용이라 이번 작업과 직접 관계 없음
+
+  [ 에디터 버전 ]
+  - ProjectSettings/ProjectVersion.txt 기준 Unity 6000.3.8f1 (Unity 6).
+    Unity 6부터 Rigidbody2D.velocity가 Deprecated고 linearVelocity로
+    이름이 바뀌었으므로, 이번에 새로 짜는 플랫폼 이동 코드는
+    linearVelocity를 사용함 (d절 참고)
+
+  [ 코드 상태 (26.09.14 최초 초안 → 같은 날 재작성) ]
+  - 이 문서 작성 직후 최초 범위(탑다운 좁은 박스 + VN 캐릭터를 플레이어
+    아바타로 매핑)에 맞춰 Assets/Scripts/Avoid/ 하위 스크립트와
+    CMD_DatabaseExtension_Avoid.cs를 1차로 작성했었음
+  - 같은 날 사용자가 화면 구성(사이드스크롤 플랫폼)과 캐릭터 인터페이스
+    (VN 캐릭터=보스, 주인공=별도 고정 캐릭터)를 다시 지시하여, 아래
+    d~g절은 그 변경을 반영한 최종 구조로 다시 작성함. 단, 26.09.15
+    확인 결과 코드는 이동 로직(MovementRigidbody2D/AvoidPlayerController)
+    까지만 실제로 작성되어 있었고 나머지는 미작성 상태 — 26.09.14
+    시점의 "완료" 기록은 착오였던 것으로 정정 (g절 참고)
+
+
+================================================================
+d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+================================================================
+
+  1) 신규 씬 : Assets/Scenes/Avoid.unity
+     - Main Camera (Orthographic, 사이드뷰로 박스 전체가 보이도록 배치)
+     - AvoidSceneController 오브젝트 1개 (씬 초기화 총괄)
+     - 발판(플랫폼) 오브젝트 1개 이상, Collider2D + "Ground" 레이어
+       (메이플식 중력/점프를 실제로 받아낼 바닥)
+     - Player 오브젝트 1개 : Rigidbody2D + Collider2D (바닥 판정은
+       자식 오브젝트 없이 MovementRigidbody2D.cs가 Collider2D.bounds로
+       자체 계산 — 26.09.15 수정, e/f절 참고)
+     - Boss 오브젝트 1개 : AvoidBossController 부착 (VN 캐릭터가
+       등장할 위치, 이번엔 표시만 하고 움직이지 않음)
+     - 좌우 박스 벽은 시각적 가이드로만 배치, 실제 좌우 이동 제한은
+       코드에서 처리 (Mathf.Clamp 기반, 바닥/점프는 물리 충돌 사용)
+
+  2) 신규/변경 폴더 : Assets/Scripts/Avoid/
+     - Avoid/Data/AvoidCharacterProfile.cs (보스용, 재정의)
+       · ScriptableObject. characterKey(string, Character.name/alias와
+         매칭), idleAnimation/hitAnimation/attackAnimation(우선은
+         AnimationClip 참조 필드로 최소 정의, 실제 애니메이션 시스템은
+         미정이라 나중에 타입 조정 가능하게 주석으로 명시),
+         hitboxRadius(float, 주인공 공격이 닿는 판정 반경)
+     - Avoid/Data/PlayerCharacterProfile.cs (신규, 주인공 전용)
+       · ScriptableObject. VN 로스터와 무관한 고정 캐릭터 1인용이라
+         characterKey로 여러 개를 관리하지 않고 단일 애셋을 만들어
+         인스펙터에 직접 연결. idleAnimation/moveAnimation/
+         jumpAnimation/hitAnimation/attackAnimation + hitboxRadius
+     - Avoid/Core/MovementRigidbody2D.cs + Avoid/Core/AvoidPlayerController.cs
+       (26.09.15 수정 — 애초 계획은 한 클래스였으나 실제로는 입력과
+       이동 로직을 분리해서 작성함)
+       · MovementRigidbody2D.cs : [RequireComponent(typeof(Rigidbody2D))].
+         입력을 직접 읽지 않고 MoveTo(float x)/JumpTo()/IsLongJump 같은
+         공개 API만 제공. FixedUpdate에서 자신의 Collider2D.bounds로
+         발 위치/영역을 계산해 Physics2D.OverlapBox로 바닥 판정
+         (groundCheck 자식 오브젝트 불필요 — d절 1) 참고). 숏/롱 점프는
+         IsLongJump 여부에 따라 gravityScale(lowGravity/highGravity)을
+         다르게 적용하는 방식
+       · AvoidPlayerController.cs : [RequireComponent(typeof(PlayerInput))]
+         + [RequireComponent(typeof(MovementRigidbody2D))]. Assets/Input/
+         AvoidInput.inputactions(Player 맵 — Move: A/D 1D Axis,
+         Jump: Space)에서 액션을 읽어 MovementRigidbody2D의 API로
+         전달. Move는 FixedUpdate에서 ReadValue<float>()로 매 프레임
+         폴링, Jump는 started/canceled 이벤트로 IsLongJump 토글
+         (VN 쪽 PlayerInputManager.cs와 같은 Input Action 패턴 — e절
+         "입력 처리 방식" 참고)
+       · 좌우 박스 벽 경계(AvoidSceneController.BoxHalfExtents.x Clamp)와
+         마우스 조준/Initialize(PlayerCharacterProfile)는 아직 미반영
+         (다음 세션에서 이어서 작업 예정)
+     - Avoid/Core/AvoidBossController.cs (신규)
+       · ApplyProfile(AvoidCharacterProfile) 메서드만 가진 최소
+         컴포넌트. 실제 탄막/패턴/HP는 5단계에서 구현
+     - Avoid/Core/AvoidSceneController.cs (재작성)
+       · player/boss/playerProfile 참조를 인스펙터에서 받음
+       · Start()에서 player.Initialize(playerProfile) 로 고정
+         주인공 프로필을 항상 적용
+       · Setup(string characterKey) : 이번 전투에서 보스로 등장할
+         VN 캐릭터 키를 받아 Resources.Load<AvoidCharacterProfile>
+         ($"Avoid/CharacterProfiles/{characterKey}")로 보스 프로필을
+         불러와 boss.ApplyProfile(profile) 호출
+       · 씬이 로드된 직후 커맨드 쪽에서 이 컴포넌트를 찾아 Setup을
+         호출하는 구조 (연결 방식은 3) 참고)
+
+  3) 파일 : Assets/Scripts/VisualNovel/Core/Commands/Database/
+     Extensions/CMD_DatabaseExtension_Avoid.cs (구조는 최초안과 동일,
+     주석만 "characterKey = 보스로 등장할 캐릭터"로 갱신)
+     - CMD_DatabaseExtension 상속, "startAvoid"/"endAvoid" 명령 등록
+     - startAvoid(string[] data) : 첫 인자를 (보스로 등장할)
+       characterKey로 사용
+       1. DialogueSystem.instance.Hide(speed: 0f, immediate: true) 로
+          대화 UI 숨김 (기존 hideui 명령과 동일 API 재사용)
+       2. SceneManager.LoadSceneAsync("Avoid", LoadSceneMode.Additive)
+          를 yield return으로 대기
+       3. 로드 완료 후 AvoidSceneController.instance를 찾아
+          Setup(characterKey) 호출
+     - endAvoid(string[] data) : (임시, 테스트용) Avoid 씬을
+       SceneManager.UnloadSceneAsync("Avoid")로 내리고
+       DialogueSystem.instance.Show(...)로 대화 UI 복귀
+       → 실제로는 보스 처치/게임오버 조건에 따라 자동으로 호출되어야
+         하지만 그 조건/결과 전달 방식은 5단계(보스) 설계에서 확정
+         예정이라, 지금은 대본에서 직접 [endAvoid]를 써서 왕복
+         테스트하는 용도로만 둠
+
+  4) 신규 리소스 폴더 : Assets/Resources/Avoid/CharacterProfiles/
+     - 테스트용으로 보스 캐릭터 1명(예: Lia) 프로필 애셋만 우선 생성,
+       나머지는 실제 보스 아트/애니메이션이 준비되는 대로 추가
+     - PlayerCharacterProfile 애셋은 단일 인스펙터 참조라 Resources
+       폴더에 둘 필요 없음 (원하는 위치에 두고 AvoidSceneController에
+       드래그해서 연결하면 됨)
+
+
+================================================================
+e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+================================================================
+
+  [ VN↔피하기 연결 방식 ]
+  - 대안 1 : 별도 씬 + SceneManager.LoadScene(단일 모드)
+    · 장점 : 씬 파일이 완전히 분리됨
+    · 단점 : c절에서 확인했듯 VN 싱글톤들이 DontDestroyOnLoad가 아니라
+      전환 시 전부 파괴됨. 대화 진행상태/변수를 세이브→로드로 왕복
+      시켜야 하는데, 세이브 데이터 구조 확장은 4단계(인벤토리)부터
+      하기로 이미 결정되어 있어(26.09.13/26.09.14 로드맵) 시기상 맞지
+      않음 → 기각
+  - 대안 2 : 같은 씬 안에서 루트 오브젝트 SetActive 토글
+    · 장점 : 싱글톤 파괴 문제 없음, 구현이 제일 단순
+    · 단점 : 3~5단계(스킬/인벤토리/보스) 콘텐츠까지 전부 한 씬 파일에
+      쌓여서 나중에 씬이 비대해짐 → 기각(완전히 나쁜 방법은 아니라
+      추후 상황이 바뀌면 재검토 가능)
+  - 대안 3 (채택) : 애디티브 씬 로딩 (LoadSceneMode.Additive)
+    · VN 씬을 언로드하지 않은 채 Avoid 씬을 위에 얹으므로 싱글톤
+      파괴 문제가 없고(대안 1의 단점 해결), 동시에 씬 파일 자체는
+      목적별로 분리됨(대안 2의 단점 해결)
+    · 단점 : 패널 토글보다 전환 코드가 조금 더 필요(로딩 대기, 씬
+      탐색으로 컨트롤러 참조 확보)하지만 감수 가능한 수준
+    → 사용자가 직접 이 방식으로 결정 (26.09.14)
+
+  [ 캐릭터 게임플레이 데이터 위치 ]
+  - 대안 1 : 기존 CharacterConfigData.cs 에 필드 추가
+    · 장점 : 새 클래스 없이 빠르게 처리 가능
+    · 단점 : VN 표시용 데이터(이름색/폰트 등)와 게임플레이 스탯이 한
+      파일에 섞여 관심사가 분리되지 않음 → 기각
+  - 대안 2 (채택) : AvoidCharacterProfile 이라는 별도 ScriptableObject로
+    분리, characterKey로 기존 Character.name/alias와 연결
+    · VN 표시 계층과 피하기 게임플레이 계층이 완전히 분리되어, 나중에
+      3단계 카드/4단계 인벤토리 데이터도 같은 Avoid/Data/ 폴더 규칙으로
+      자연스럽게 확장 가능
+    → 사용자가 직접 이 방식으로 결정 (26.09.14)
+
+  [ 이동 방식 (26.09.14, 화면 구성을 사이드스크롤로 바꾸면서 추가 결정) ]
+  - 대안 1 : 좌우+상하 자유 이동, 중력/발판 없음 (최초 탑다운 이동
+    로직을 시점만 바꿔서 재사용)
+    · 장점 : 구현이 제일 단순, 이미 짜둔 코드를 거의 그대로 씀
+    · 단점 : "메이플스토리 형식"이라는 요구와 맞지 않음(진짜 플랫폼
+      느낌이 안 남) → 기각
+  - 대안 2 (채택) : 중력/점프 있는 진짜 플랫폼 (Rigidbody2D +
+    groundCheck 기반)
+    · 장점 : 메이플스토리 보스전 느낌을 실제로 구현. 나중에 발판/맵
+      디자인을 확장할 여지가 생김
+    · 단점 : 발판 Collider2D 배치 등 씬 구성이 좀 더 필요(에디터에서
+      직접 작업) → 감수 가능한 수준
+    → 사용자가 직접 이 방식으로 결정 (26.09.14)
+
+  [ 입력 처리 방식 (26.09.15 추가 결정) ]
+  - 대안 1 : 구식 Input Manager(Input.GetKey/GetAxis)로 직접 읽기
+    · 장점 : 코드가 제일 짧음
+    · 단점 : VN 쪽(PlayerInputManager.cs)이 이미 PlayerInput + Input
+      Action Asset 구조로 되어 있어서, 여기만 구식 방식을 쓰면 입력
+      처리 방식이 프로젝트 안에서 두 갈래로 갈라짐 → 기각
+  - 대안 2 (채택) : Input Action (PlayerInput + Assets/Input/
+    AvoidInput.inputactions)
+    · VN 쪽과 동일한 패턴(액션을 필드로 캐싱 → OnEnable/OnDisable에서
+      구독)이라 프로젝트 전체 입력 처리 방식이 통일됨. 프로젝트에
+      Input System 패키지(1.18.0)가 이미 설치돼 있고, Active Input
+      Handling도 Both(2)라 새 제약 없음. AvoidInput.inputactions
+      파일 자체도 이미(내용 없이) 만들어져 있던 상태라 이 방식을
+      염두에 두고 있었던 것으로 보임
+    · 이동(MoveTo)과 이동 로직(바닥/중력 판정)을 분리하기 위해
+      MovementRigidbody2D(순수 이동 로직, 입력 비의존) +
+      AvoidPlayerController(Input Action → MovementRigidbody2D 호출)
+      두 클래스로 나눔 — d절 2) 참고
+    → 사용자가 직접 이 방식으로 결정 (26.09.15)
+
+  [ 플레이어(주인공) 캐릭터의 정체 (26.09.14, 캐릭터 인터페이스를
+    "VN 캐릭터=보스"로 바꾸면서 추가 결정) ]
+  - 대안 1 : VN 캐릭터 중 하나가 상황에 따라 플레이어도 되고 보스도 됨
+    · 장점 : 기존 로스터(Lia/Mari/Mina/Rachel/Raelin)를 그대로 재사용
+    · 단점 : 같은 캐릭터가 보스와 플레이어를 동시에 겸하는 경우가
+      생길 수 있어 의미상 모순(자기 자신과 싸우는 상황)이 발생할 수
+      있고, 데이터 구조(같은 프로필이 두 역할을 다 커버해야 함)도
+      애매해짐 → 기각
+  - 대안 2 (채택) : 개발 캐릭터 1인 전용(주인공 고정), VN 캐릭터는
+    전부 보스 전용
+    · 장점 : 역할이 명확히 분리됨 (VN 로스터 = 보스, 주인공 = 별도
+      고정 캐릭터). PlayerCharacterProfile을 characterKey 매핑 없는
+      단일 애셋으로 단순하게 관리 가능
+    · 단점 : 주인공 전용 아트/애니메이션을 VN 캐릭터와 별개로 새로
+      준비해야 함 (어차피 필요한 작업이라 감수)
+    → 사용자가 직접 이 방식으로 결정 (26.09.14)
+
+
+================================================================
+f. 어떤 순서로 진행할 것인지
+================================================================
+
+  (1~6은 코드 작업. 26.09.14 초안 작성 시점엔 전부 완료로 기록했으나
+  26.09.15 확인 결과 실제로는 4번(이동 로직)만 완료된 상태였음 — 2/3/
+  5/6은 다음 세션에서 이어서 작성 예정. 7~9는 Unity 에디터 작업, 역시
+  다음 세션에서 진행)
+
+  1. Assets/Scripts/Avoid/ 폴더 구조 생성 (Data/, Core/) — 완료
+  2. AvoidCharacterProfile.cs (보스용 ScriptableObject) 작성 — 미완료
+  3. PlayerCharacterProfile.cs (주인공 전용 ScriptableObject) 작성 — 미완료
+  4. MovementRigidbody2D.cs(Rigidbody2D 기반 좌우+점프 이동, Collider2D
+     bounds로 자체 바닥 판정) + AvoidPlayerController.cs(AvoidInput.
+     inputactions 연결) 작성 — 완료(26.09.15). 박스 좌우벽 Clamp/마우스
+     조준은 아직 미반영
+  5. AvoidBossController.cs (ApplyProfile만 가진 최소 컴포넌트) 작성 — 미완료
+  6. AvoidSceneController.cs 를 player/boss/playerProfile 참조 구조로
+     작성, CMD_DatabaseExtension_Avoid.cs 주석 갱신 — 미완료
+  7. (에디터) Assets/Scenes/Avoid.unity 신규 씬 생성 및 빌드 세팅에 추가.
+     아래를 전부 이 단계에서 처리 (세부 항목 누락 없이):
+     a. Project Settings > Tags and Layers 에 "Ground" 레이어 신규 생성
+     b. Main Camera 배치 (Orthographic, 사이드뷰로 박스 전체가 보이도록).
+        Depth를 VN 카메라보다 높게, Clear Flags를 Solid Color(또는
+        Depth Only)로 설정해 VN 배경을 완전히 덮도록 함 (h절 참고)
+     c. 발판(플랫폼) 오브젝트 1개 이상 배치 — Collider2D 부착, 레이어를
+        a에서 만든 "Ground"로 지정
+     d. 좌우 박스 벽 시각적 가이드 오브젝트 배치 (스프라이트/라인 등,
+        물리 콜라이더 없이 시각 참고용만)
+     e. Player 오브젝트 배치 — Rigidbody2D + Collider2D + PlayerInput
+        (Actions = AvoidInput, Default Map = Player) + MovementRigidbody2D
+        + AvoidPlayerController 컴포넌트 부착. groundCheck 자식
+        오브젝트는 불필요(26.09.15 수정, d절 1) 참고).
+        MovementRigidbody2D의 groundLayer 필드에 "Ground" 레이어 지정
+     f. Boss 오브젝트 배치 — AvoidBossController 부착 (등장 위치, 이번엔
+        표시만 하고 움직이지 않음)
+     g. AvoidSceneController 오브젝트 배치 — player/boss 필드에 위에서
+        만든 오브젝트 연결, boxHalfExtents 값을 d에서 배치한 좌우 벽
+        위치에 맞게 조정 (기본값 (5,3)에서 시작, 정밀 튜닝은 이번 범위
+        밖 — h절 참고)
+  8. (에디터) Assets/Resources/Avoid/CharacterProfiles/ 폴더에 테스트용
+     보스 프로필 애셋 1개(Lia) 생성, PlayerCharacterProfile 애셋 1개는
+     원하는 위치에 생성 후 AvoidSceneController의 playerProfile 필드에
+     연결
+  9. VisualNovel.unity 의 테스트용 대본(Resources/Dialogue Files/Test/)
+     에 [startAvoid(Lia)] / [endAvoid] 줄을 추가해 왕복 확인
+     (에디터 Play 모드에서 실제 테스트는 다음 세션에서 진행)
+
+
+================================================================
+g. 어디가 어떤 식으로 변경되는지
+================================================================
+
+  [ 신규 파일 (코드) ]
+  - Assets/Scripts/Avoid/Core/MovementRigidbody2D.cs (작성 완료,
+    26.09.15) — Rigidbody2D 기반 좌우+점프 이동, Collider2D bounds로
+    자체 바닥 판정
+  - Assets/Scripts/Avoid/Core/AvoidPlayerController.cs (작성 완료,
+    26.09.15) — AvoidInput.inputactions를 읽어 MovementRigidbody2D 호출
+  - Assets/Input/AvoidInput.inputactions (작성 완료, 26.09.15) — Player
+    맵(Move: A/D 1D Axis, Jump: Space)
+  - Assets/Scripts/Avoid/Data/AvoidCharacterProfile.cs (보스용) — 미작성
+  - Assets/Scripts/Avoid/Data/PlayerCharacterProfile.cs (주인공 전용) — 미작성
+  - Assets/Scripts/Avoid/Core/AvoidBossController.cs — 미작성
+  - Assets/Scripts/Avoid/Core/AvoidSceneController.cs — 미작성
+  - Assets/Scripts/VisualNovel/Core/Commands/Database/Extensions/
+    CMD_DatabaseExtension_Avoid.cs — 미작성
+    (위 5개는 26.09.14 초안 작성 시점엔 "완료"로 기록했었으나, 26.09.15
+    확인 결과 Assets/Scripts/Avoid/ 폴더 자체가 없는 상태였음 — 실제로는
+    미작성이었던 것으로 정정. 다음 세션에서 이어서 작성 예정)
+
+  [ 기존 파일 변경 ]
+  - Assets/Scripts/VisualNovel/Core/IO/FilePaths.cs : resources_avoid /
+    resources_avoidCharacterProfiles 경로 상수 추가
+
+  [ 신규 파일 (에디터 작업, 다음 세션 — 세부 절차는 f절 7~9 참고) ]
+  - Assets/Scenes/Avoid.unity (+ .meta) — "Ground" 레이어 신규 생성,
+    카메라 Depth/Clear Flags 설정으로 VN 배경 가리기, 발판/좌우 벽
+    가이드/Player(PlayerInput+MovementRigidbody2D+AvoidPlayerController,
+    groundCheck 자식 오브젝트는 불필요)/Boss/AvoidSceneController 배치
+    및 인스펙터 참조·값(boxHalfExtents 등) 연결까지 전부 포함
+  - Assets/Resources/Avoid/CharacterProfiles/Lia.asset (보스 테스트용)
+  - PlayerCharacterProfile 애셋 1개 (위치 자유, Resources 불필요)
+
+  [ 기존 파일 중 변경 없음 ]
+  - DialogueSystem.cs, CommandManager.cs 등은 리플렉션 자동 등록
+    구조라 새 명령 추가에 코드 수정이 필요 없음
+  - CharacterConfigData.cs 는 건드리지 않음 (e절 결정에 따라 완전히
+    분리된 별도 데이터로 처리하므로)
+
+  [ 테스트용 임시 변경 ]
+  - Assets/Resources/Dialogue Files/Test/ 안에 왕복 테스트용 대본
+    한 줄 정도 추가 (실제 스토리 대본 아님, 검증 후 삭제 가능)
+
+
+================================================================
+h. 주의할 점
+================================================================
+
+  ■ 이번 ChangePlan은 "뼈대"까지만 범위로 함. 아래는 명시적으로
+    이번 범위 밖이며 후속 ChangePlan에서 별도로 다룸 :
+    - 실제 탄막/보스 스포너, 보스 HP/패턴 (5단계)
+    - 히트박스/충돌 판정 방식(Trigger Collider vs 거리 계산) 확정
+    - 박스의 정확한 크기/해상도 (지금은 임의값으로 배치 후 튜닝)
+    - 플레이어 공격(마우스 조준 발사체) 의 실제 발동/쿨타임 (3단계
+      스킬(카드) 시스템과 함께 설계 예정)
+    - 피하기 결과(클리어/실패, 목숨 등)를 VN/RPG 쪽에 전달하는 방식
+      (로드맵 f절에 "정확한 연동 방식은 미정"으로 이미 명시되어 있음)
+    - endAvoid 명령은 지금은 개발자가 직접 대본에 적어 테스트하는
+      임시 수단이며, 실제로는 목숨 소진/보스 처치 조건에서 코드가
+      자동으로 호출해야 함 (5단계에서 교체 예정)
+
+  ■ 애디티브 로딩 시 VN 배경/그래픽 패널이 Avoid 씬 뒤에 그대로
+    남아있음 — 코드가 아니라 에디터에서 카메라 인스펙터로 직접
+    처리해야 하는 항목이라 f절 7-b 단계에 구체적으로 포함시켜 둠
+
+  ■ AvoidCharacterProfile 의 애니메이션 필드 타입(Sprite 배열 vs
+    AnimationClip vs Animator Controller)은 실제 아바타 아트/애니메이션
+    작업 방식이 정해지지 않아 가안임. 나중에 아트 파이프라인이
+    확정되면 필드 타입을 바꿔야 할 수 있음
+
+  ■ 캐릭터 프로필은 이번엔 Lia 1명만 만들고 나머지(Mari/Mina/Rachel/
+    Raelin/Generic)는 스텁 없이 비워둠 — Resources.Load가 null을
+    반환할 경우에 대한 에러 로그 정도는 넣어둘 것
+
+  ■ (26.09.14 추가) 사이드스크롤 플랫폼으로 바뀌면서 생긴 주의점
+    - Rigidbody2D.velocity는 Unity 6부터 Deprecated라 linearVelocity
+      사용 (c절 "에디터 버전" 참고)
+    - 점프가 실제로 동작하려면 "Ground" 레이어 생성 + 발판 Collider2D
+      배치 + MovementRigidbody2D의 groundLayer 필드 지정이 전부 맞아야
+      함 — 코드만으로는 동작 확인 불가 (f절 7-a/7-c/7-e 단계에 구체적으로
+      포함시켜 둠). groundCheck 자식 오브젝트는 26.09.15부터 불필요
+      (Collider2D.bounds로 자체 계산 — d절 1) 참고)
+    - boxHalfExtents.y는 이제 물리적 경계로 쓰이지 않고 카메라
+      프레이밍 참고용 정도로만 남겨둠 (좌우 x만 실제 Clamp에 사용)
+
+  ■ 변경 이력 (같은 문서를 26.09.14 안에서 두 번 수정)
+    1차 : 탑다운 좁은 박스 + VN 캐릭터를 플레이어 아바타로 매핑
+    2차(최종, 이 문서 상태) : 사이드스크롤 플랫폼(메이플스토리 형식) +
+    VN 캐릭터는 보스, 주인공은 별도 고정 캐릭터
+    → 1차 때 작성했던 코드는 2차 구조로 다시 작성 완료 (c/d/g절 참고)
+
+  ■ 변경 이력 (26.09.15 추가 수정)
+    - 26.09.14 시점 문서엔 f절 1~6(코드 작업) 전부가 "완료"로 기록돼
+      있었으나, 실제로는 Assets/Scripts/Avoid/ 폴더 자체가 없는
+      상태였음 (착오였던 것으로 정정)
+    - 이동 로직을 외부에서 가져온 MovementRigidbody2D.cs(순수 이동
+      로직, 입력 비의존) 기반으로 다시 설계하면서, 입력 처리는
+      VN 쪽과 통일해 Input Action(PlayerInput + Assets/Input/
+      AvoidInput.inputactions)으로 채택 — AvoidPlayerController.cs가
+      그 연결을 담당
+    - 그 결과 groundCheck 자식 오브젝트가 필요 없어짐
+      (MovementRigidbody2D가 Collider2D.bounds로 자체 계산)
+    - c/d/e/f/g/h절에 위 변경 반영. AvoidCharacterProfile/
+      PlayerCharacterProfile/AvoidBossController/AvoidSceneController/
+      CMD_DatabaseExtension_Avoid는 여전히 미작성 상태로 다음 세션에서
+      이어서 진행
+
+================================================================

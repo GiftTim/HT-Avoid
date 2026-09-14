@@ -1,0 +1,68 @@
+
+PlaySong("Happy2")
+
+SetLayerMedia(background "bg dungeon_entrance")
+
+CreateCharacter("Mina" -e false),
+Mina.setSprite(-s Body3 -l 0), 
+Mina.setSprite(-s Smile -l 1)
+Mina.SetPosition(0)
+Mina.Show()
+
+CreateCharacter("맨 as Generic" -e false), 
+맨.SetSprite(-s Man)
+맨.SetPosition(1),
+맨.Show()
+
+
+맨 "좋은 아침이네, 아가야. {n}이곳엔 무슨 일로 왔지?"
+
+Mina.FaceRight()
+
+Mina.FaceRight()
+[wait]맨.Move(0 -spd 1 -smt true)
+맨.Move(1 -spd 1)
+
+
+choice "준비되셨나요?"
+{
+    -너를 꼬시기 위해서 왔어요
+        맨  "그게 이유인가요? {n}제가 몇 살로 보이시는데요?"
+        Mina "몇 살인가요?"
+        맨 "..."
+        Mina "아, 알겠어요 그냥 지나갈게요..."
+        Load(Coffee_Bean -enqueue true)
+
+    -이 길을 통과하기 위해서 왔습니다.
+        맨 "아쉽겠군, 오늘부터 이 문은 출입 퉁제가 된다!"
+        choice "잠깐만요 제 말을 들어주세요"
+        {
+            -1번 선택지에요
+                맨 "그래 말해보거라"
+                Mina "그러니까..."
+                맨 "꺼져라"
+            
+            -2번 선택지에요 
+                Mina "알겠다"
+        }
+        Load(Coffee_Bean)
+}
+
+
+[wait]맨.Move(2 -spd 2), 
+[wait]Mina.Move(2 -spd 2)
+
+맨.Hide(), Mina.Hide()
+
+
+wait(3)
+
+StopSong("Happy2")
+ClearLayerMedia(background -blend leftRight -spd 0.5)
+
+
+
+
+
+
+

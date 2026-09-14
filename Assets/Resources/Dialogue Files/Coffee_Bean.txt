@@ -3,3 +3,7 @@ SetLayerMedia(background "training")
 PlayAmbience(RainyMood)
 
 narrator "번개가 친다."
+
+
+[wait]Mina.Move(2 -spd 1 -smt true)
+
