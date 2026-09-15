@@ -90,5 +90,14 @@ public class MovementRigidbody2D : MonoBehaviour
 
 		return false;
 	}
+
+	/// <summary>
+	/// 지정 위치로 즉시 이동시키고 속도를 초기화 (리스폰 등에서 외부 클래스가 호출)
+	/// </summary>
+	public void Teleport(Vector2 position)
+	{
+		rigid2D.position		= position;
+		rigid2D.linearVelocity	= Vector2.zero;
+	}
 }
 
