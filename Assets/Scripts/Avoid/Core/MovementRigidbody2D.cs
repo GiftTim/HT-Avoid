@@ -35,6 +35,10 @@ public class MovementRigidbody2D : MonoBehaviour
 	{
 		rigid2D		= GetComponent<Rigidbody2D>();
 		collider2D	= GetComponent<Collider2D>();
+
+		// 마찰이 있으면 Ground 옆면(벽)에 붙어서 안 미끄러지는 현상이 생기므로,
+		// 이동/점프를 전부 속도 직접 제어로 하는 이 컨트롤러에서는 마찰을 0으로 둔다.
+		rigid2D.sharedMaterial = new PhysicsMaterial2D { friction = 0, bounciness = 0 };
 	}
 
 	private void FixedUpdate()
