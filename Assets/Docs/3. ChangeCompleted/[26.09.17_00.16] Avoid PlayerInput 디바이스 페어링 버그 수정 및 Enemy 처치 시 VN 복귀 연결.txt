@@ -1,0 +1,343 @@
+================================================================
+Avoid PlayerInput 디바이스 페어링 버그 수정 및 Enemy 처치 시 VN 복귀 연결
+작성일 : 2026-09-17 00:16 (KST)
+참고 : Assets/Docs/3. ChangeCompleted/[26.09.16_13.35] 애디티브 씬
+      로딩으로 VisualNovel-Avoid 왕복 전환 구현 완료.txt (이 세션의
+      바로 이전 작업물 — 씬 전환 매커니즘 자체는 그 문서에서 완성됨)
+================================================================
+
+[목차]
+  1. 변경
+  2. 기록
+  3. 저장 / 주의할 점
+
+
+================================================================
+1. 변경
+================================================================
+
+  이전 세션에서 애디티브 씬 로딩으로 VN↔Avoid 왕복 매커니즘까지는
+  완성했으나, 에디터 Play 모드 실제 확인은 다음 세션으로 미뤄둔
+  상태였음. 이번 세션에 실제로 Play 모드에서 확인한 결과 두 가지
+  문제가 발견되어 수정함.
+
+  ■ 문제 1 : Avoid로 진입하면 클릭도 WASD도 전혀 먹히지 않음
+    - Input Debugger(Window > Analysis > Input Debugger)로 확인한
+      결과, 현재 활성화된 Actions 목록에 AvoidInput(Move/Jump/Attack)
+      도 VisualNovelInput도 전혀 안 보임 — Avoid의 PlayerInput이
+      키보드/마우스 디바이스 페어링 자체에 실패하고 있었음
+    - 원인 : VN 씬의 PlayerInputManager(PlayerInput 컴포넌트)가 씬이
+      켜질 때 키보드/마우스를 먼저 페어링해 점유한 채로, Avoid 씬이
+      애디티브로 얹혀도 언로드되지 않고 계속 살아있음. Unity Input
+      System은 같은 물리 디바이스를 여러 PlayerInput이 동시에
+      페어링할 수 없어서, 뒤늦게 활성화되는 Avoid 쪽 PlayerInput이
+      키보드/마우스를 아예 못 가져감
+    - 1차 시도(부족했음) : PlayerInput.DeactivateInput()으로 VN 쪽
+      액션만 꺼봤으나, 이 API는 액션만 비활성화할 뿐 디바이스
+      페어링 자체는 유지해서 문제가 그대로였음
+    - 최종 수정 : PlayerInput 컴포넌트 자체를 껐다 켜는 방식
+      (input.enabled = false/true)으로 바꿈 — 컴포넌트가 비활성화될
+      때 Unity가 페어링된 디바이스를 실제로 해제하므로, Avoid 쪽
+      PlayerInput이 정상적으로 키보드/마우스를 페어링할 수 있게 됨
+    - 부수 효과 : 기존에 미해결로 남아있던 Space 키 충돌(VN
+      "다음 대사" vs Avoid "Jump")도 VN 입력 자체가 꺼지므로 같이
+      해결됨
+
+  ■ 문제 2 : PlayerAttack이 Camera.main을 써서 카메라가 뒤섞일 수 있음
+    - VN 씬 카메라와 Avoid 씬 카메라가 둘 다 "MainCamera" 태그를
+      갖고 있음. 두 씬이 동시에 로드된 상태(애디티브)에서는
+      Camera.main이 어느 씬의 카메라를 반환할지 보장되지 않아, 클릭
+      좌표를 엉뚱한 카메라 기준으로 변환해 공격 판정이 빗나갈 수
+      있는 잠재 버그였음
+    - 수정 : Avoid Player의 PlayerInput.m_Camera에 이미 올바르게
+      연결되어 있던 이 씬 전용 카메라(input.camera)를 Camera.main
+      대신 우선 사용하도록 변경
+
+  ■ 신규 기능 : Enemy(Enemy1/2/3) 중 아무거나 하나 처치 시 VN 복귀
+    - 사용자 요청 : "Avoid에서 Enemy1,2,3 중 하나를 때려서 사라지면
+      VN로 돌아가게 해줘"
+    - CMD_DatabaseExtension_Avoid.EndAvoid()가 하던 "씬 언로드 → VN
+      입력 복구 → 대화창 표시" 절차를 ReturnToVN()으로 분리해
+      [endAvoid] 대본 명령과 게임플레이 이벤트(적 처치) 양쪽에서
+      재사용하도록 함
+    - Enemy.TakeDamage()에서 죽는 순간 ReturnToVN() 코루틴을 실행.
+      단, PlayerAttack의 OverlapCircleAll 판정 범위 안에 여러
+      Enemy가 겹쳐 있으면 한 번의 공격으로 동시에 여러 마리가
+      죽을 수 있어, 정적 플래그(hasCleared)로 VN 복귀가 중복
+      실행되지 않도록 막음. 이 플래그는 Avoid 재진입
+      (CMD_DatabaseExtension_Avoid.StartAvoid) 시점에 초기화됨
+
+
+================================================================
+2. 기록
+================================================================
+
+  [ 변경 전 / 후 ]
+
+  ── Assets/Scripts/VisualNovel/Core/UserControls/PlayerInputManager.cs ──
+
+  변경 전:
+  ```csharp
+  namespace DIALOGUE
+  {
+      public class PlayerInputManager : MonoBehaviour
+      {
+          private PlayerInput input;
+          private List<(InputAction action, Action<InputAction.CallbackContext> command)> actions
+              = new List<(InputAction, Action<InputAction.CallbackContext>)>();
+
+          void Awake()
+          {
+              input = GetComponent<PlayerInput>();
+
+              InitializeActions();
+          }
+
+          private void InitializeActions() { ... }
+          private void OnEnable() { ... }
+          private void OnDisable() { ... }
+          // OnNext / OnHistoryBack / OnHistoryForward / OnHistoryToggleLog
+      }
+  }
+  ```
+  (VN 밖에서 이 PlayerInput을 켜고 끌 방법 자체가 없었음)
+
+  변경 후:
+  ```csharp
+  namespace DIALOGUE
+  {
+      public class PlayerInputManager : MonoBehaviour
+      {
+          public static PlayerInputManager instance { get; private set; }
+
+          private PlayerInput input;
+          private List<(InputAction action, Action<InputAction.CallbackContext> command)> actions
+              = new List<(InputAction, Action<InputAction.CallbackContext>)>();
+
+          void Awake()
+          {
+              instance = this;
+
+              input = GetComponent<PlayerInput>();
+
+              InitializeActions();
+          }
+
+          // Avoid 등 다른 씬이 애디티브로 얹혀 키보드/마우스를 받아야 할 때 끔.
+          // DeactivateInput()은 액션만 끄고 디바이스 페어링은 유지되어, 뒤이어
+          // 켜지는 다른 PlayerInput(Avoid)이 같은 키보드/마우스를 페어링하지
+          // 못하는 문제가 있었음 → 컴포넌트 자체를 껐다 켜서 페어링까지 해제/재획득
+          public void SetInputEnabled(bool isEnabled)
+          {
+              input.enabled = isEnabled;
+          }
+
+          private void InitializeActions() { ... 동일 ... }
+          private void OnEnable() { ... 동일 ... }
+          private void OnDisable() { ... 동일 ... }
+          // OnNext / OnHistoryBack / OnHistoryForward / OnHistoryToggleLog 동일
+      }
+  }
+  ```
+
+
+  ── Assets/Scripts/VisualNovel/Core/Commands/Database/Extensions/
+     CMD_DatabaseExtension_Avoid.cs ──────────────────────────────
+
+  변경 전:
+  ```csharp
+  private static IEnumerator StartAvoid(string[] data)
+  {
+      yield return DialogueSystem.instance.Hide(0f, true);
+
+      yield return SceneManager.LoadSceneAsync(AVOID_SCENE_NAME, LoadSceneMode.Additive);
+
+      Debug.Log("[CMD_DatabaseExtension_Avoid] Avoid 씬 로드 완료");
+  }
+
+  private static IEnumerator EndAvoid(string[] data)
+  {
+      yield return SceneManager.UnloadSceneAsync(AVOID_SCENE_NAME);
+
+      yield return DialogueSystem.instance.Show(0f, true);
+  }
+  ```
+
+  변경 후:
+  ```csharp
+  private static IEnumerator StartAvoid(string[] data)
+  {
+      yield return DialogueSystem.instance.Hide(0f, true);
+
+      // VN의 Next/HistoryBack 등(Space/Enter 등)이 Avoid의 WASD/클릭과
+      // 동시에 같은 PlayerInput 체계에 걸려있어 입력이 먹히지 않는 문제를
+      // 막기 위해, Avoid로 넘어가는 동안 VN 쪽 입력을 꺼둔다.
+      PlayerInputManager.instance?.SetInputEnabled(false);
+
+      Enemy.ResetClearState();
+
+      yield return SceneManager.LoadSceneAsync(AVOID_SCENE_NAME, LoadSceneMode.Additive);
+
+      Debug.Log("[CMD_DatabaseExtension_Avoid] Avoid 씬 로드 완료");
+  }
+
+  private static IEnumerator EndAvoid(string[] data)
+  {
+      yield return ReturnToVN();
+  }
+
+  // Enemy가 처치되는 등 대본 명령이 아니라 게임플레이 이벤트로 VN에
+  // 복귀해야 할 때 씀 (endAvoid 커맨드와 동일한 절차를 공유)
+  public static IEnumerator ReturnToVN()
+  {
+      yield return SceneManager.UnloadSceneAsync(AVOID_SCENE_NAME);
+
+      PlayerInputManager.instance?.SetInputEnabled(true);
+
+      yield return DialogueSystem.instance.Show(0f, true);
+  }
+  ```
+
+
+  ── Assets/Scripts/Avoid/Core/PlayerAttack.cs (Awake 부분만) ──────
+
+  변경 전:
+  ```csharp
+  private void Awake()
+  {
+      input			= GetComponent<PlayerInput>();
+      attackAction	= input.actions["Attack"];
+      mainCamera		= Camera.main;
+  }
+  ```
+
+  변경 후:
+  ```csharp
+  private void Awake()
+  {
+      input			= GetComponent<PlayerInput>();
+      attackAction	= input.actions["Attack"];
+      // VN 씬과 Avoid 씬이 동시에 로드되어 있으면 카메라가 둘 다
+      // MainCamera 태그를 갖고 있어 Camera.main이 어느 쪽을 반환할지
+      // 보장되지 않는다. PlayerInput에 이미 연결된 이 씬의 카메라를 우선 사용
+      mainCamera		= input.camera != null ? input.camera : Camera.main;
+  }
+  ```
+
+
+  ── Assets/Scripts/Avoid/Core/Enemy.cs ────────────────────────────
+
+  변경 전:
+  ```csharp
+  using UnityEngine;
+
+  public class Enemy : MonoBehaviour, IDamageable
+  {
+      public void TakeDamage(int amount)
+      {
+          Debug.Log($"{name} 공격당함 (피해량: {amount})");
+          Destroy(gameObject);
+      }
+  }
+  ```
+
+  변경 후:
+  ```csharp
+  using UnityEngine;
+  using DIALOGUE;
+  using COMMANDS;
+
+  public class Enemy : MonoBehaviour, IDamageable
+  {
+      // 한 번의 공격 판정(OverlapCircleAll)이 여러 Enemy를 동시에 맞힐 수 있어서,
+      // VN 복귀가 중복 실행되지 않도록 막는 플래그. Avoid 재진입 시 초기화됨
+      private static bool hasCleared = false;
+
+      public static void ResetClearState() => hasCleared = false;
+
+      public void TakeDamage(int amount)
+      {
+          Debug.Log($"{name} 공격당함 (피해량: {amount})");
+          Destroy(gameObject);
+
+          if ( hasCleared )
+              return;
+          hasCleared = true;
+
+          DialogueSystem.instance.StartCoroutine(CMD_DatabaseExtension_Avoid.ReturnToVN());
+      }
+  }
+  ```
+
+
+  [ 변경 후 작동 흐름 ]
+
+  1. VisualNovel.unity Play → [wait]startAvoid() 실행
+     - DialogueSystem.Hide(0,true)로 대화창 숨김
+     - PlayerInputManager.instance.SetInputEnabled(false) →
+       VN의 PlayerInput 컴포넌트를 비활성화 → 키보드/마우스 페어링
+       해제
+     - Enemy.ResetClearState()로 hasCleared = false
+     - Avoid 씬을 Additive로 로드. 이 시점에 Avoid Player의
+       PlayerInput이 활성화되며 방금 풀린 키보드/마우스를 정상
+       페어링함 (Input Debugger로 확인 완료 — Player/Move(A,D),
+       Player/Jump(Space), Player/Attack(Mouse) 모두 User #0에
+       페어링됨)
+
+  2. Avoid 플레이
+     - A/D로 좌우 이동, Space로 점프, 마우스 클릭으로 공격
+       (PlayerAttack이 자기 씬의 카메라를 정확히 참조하므로 조준
+       계산도 올바름)
+     - Enemy1/2/3 중 아무거나 하나가 TakeDamage로 죽는 순간:
+       hasCleared를 즉시 true로 세팅한 뒤
+       CMD_DatabaseExtension_Avoid.ReturnToVN() 코루틴을
+       DialogueSystem.instance 위에서 시작
+         · SceneManager.UnloadSceneAsync("Avoid") 완료 대기
+         · PlayerInputManager.instance.SetInputEnabled(true) → VN
+           PlayerInput 재활성화, 키보드/마우스 재페어링
+         · DialogueSystem.instance.Show(0,true)로 대화창 복귀
+
+  3. 이후 VN 대사가 계속 진행됨 (다음에 다시 startAvoid가 실행되면
+     1번부터 반복 — hasCleared는 그때 다시 초기화됨)
+
+
+================================================================
+3. 저장 / 주의할 점
+================================================================
+
+  ■ 이 문서를 Assets/Docs/3. ChangeCompleted/[26.09.17_00.16] Avoid
+    PlayerInput 디바이스 페어링 버그 수정 및 Enemy 처치 시 VN 복귀
+    연결.txt 로 저장함
+
+  ■ ★ 이번엔 이전 세션과 달리 사용자가 직접 에디터 Play 모드로 실행
+    → Input Debugger로 디바이스 페어링 상태 확인 → Enemy 처치 후 VN
+    복귀까지 전부 실제로 확인 완료함 (스크린샷 3장으로 검증)
+
+  ■ PlayerInput을 컴포넌트 단위로 enabled/disabled 하는 방식은 Unity
+    Input System의 공식적인 "플레이어 참가/이탈" 패턴과 동일함
+    (OnDisable에서 디바이스 페어링 해제). 이후 다른 곳에서도 VN↔
+    미니게임 전환 시 입력을 넘겨줘야 하면 이 패턴(SetInputEnabled)을
+    그대로 재사용하면 됨
+
+  ■ hasCleared 플래그는 Enemy 클래스의 static 필드라서 Avoid.unity가
+    언로드되어도(Enemy 인스턴스들이 Destroy 되어도) 값이 남아있음 —
+    반드시 다음 startAvoid 시점에 ResetClearState()로 초기화해줘야
+    함. 이 초기화 호출을 빼먹으면 두 번째 왕복부터 Enemy를 죽여도 VN
+    복귀가 아예 발생하지 않게 되므로 주의
+
+  ■ 지금은 "테스트용 Enemy 아무거나 1마리 처치 = 클리어" 조건임.
+    실제로는 Enemy1/2/3를 다 잡아야 클리어라거나, 특정 보스만 클리어
+    조건이라거나 하는 규칙이 정해지면 hasCleared 대신 남은 Enemy
+    수를 세는 방식으로 바꿔야 함 — 이 부분은 이번 범위 밖(순수
+    "죽으면 돌아간다" 연결까지만)
+
+  ■ PlayerAttack의 카메라 참조는 "input.camera가 비어있으면
+    Camera.main으로 폴백"하도록 안전장치를 남겨뒀음. Avoid.unity의
+    PlayerInput.m_Camera가 나중에 실수로 비워지면 다시 Camera.main
+    문제가 재발할 수 있으니, Avoid 씬을 건드릴 때 이 필드가 비어있지
+    않은지 확인할 것
+
+  ■ 이번 범위도 지난 문서와 마찬가지로 characterKey / 보스 프로필
+    / AvoidSceneController 같은 캐릭터 인터페이스는 포함하지 않음 —
+    다음은 Assets/Docs/2. ChangePlan/[26.09.14_20.24] 문서로 이어감
+================================================================

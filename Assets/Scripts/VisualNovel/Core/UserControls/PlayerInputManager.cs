@@ -8,15 +8,28 @@ namespace DIALOGUE
 {
     public class PlayerInputManager : MonoBehaviour
     {
+        public static PlayerInputManager instance { get; private set; }
+
         private PlayerInput input;
-        private List<(InputAction action, Action<InputAction.CallbackContext> command)> actions 
+        private List<(InputAction action, Action<InputAction.CallbackContext> command)> actions
             = new List<(InputAction, Action<InputAction.CallbackContext>)>();
 
         void Awake()
         {
+            instance = this;
+
             input = GetComponent<PlayerInput>();
 
             InitializeActions();
+        }
+
+        // Avoid 등 다른 씬이 애디티브로 얹혀 키보드/마우스를 받아야 할 때 끔.
+        // DeactivateInput()은 액션만 끄고 디바이스 페어링은 유지되어, 뒤이어
+        // 켜지는 다른 PlayerInput(Avoid)이 같은 키보드/마우스를 페어링하지
+        // 못하는 문제가 있었음 → 컴포넌트 자체를 껐다 켜서 페어링까지 해제/재획득
+        public void SetInputEnabled(bool isEnabled)
+        {
+            input.enabled = isEnabled;
         }
 
         private void InitializeActions()

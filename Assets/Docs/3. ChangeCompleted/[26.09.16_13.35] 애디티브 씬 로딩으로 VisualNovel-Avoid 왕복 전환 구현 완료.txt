@@ -1,0 +1,230 @@
+================================================================
+애디티브 씬 로딩으로 VisualNovel-Avoid 왕복 전환 구현 완료
+작성일 : 2026-09-16 13:35 (KST)
+참고 계획 : Assets/Docs/2. ChangePlan/[26.09.16_01.49] 애디티브 씬
+            로딩으로 VisualNovel-Avoid 왕복 전환 테스트.txt
+================================================================
+
+[목차]
+  1. 변경
+  2. 기록
+  3. 저장 / 주의할 점
+
+
+================================================================
+1. 변경
+================================================================
+
+  참고 계획 문서의 c절(현재 상황 및 코드)과 실제 코드/씬 상태를
+  대조함.
+
+  - Avoid.unity Camera-Main의 ClearFlags(Skybox/1), Depth(-1) → c절과
+    일치, 아직 미수정 상태였음
+  - CMD_DatabaseExtension_Avoid.cs, AvoidRoundTripTest.txt → c절과
+    일치, 둘 다 아직 존재하지 않음
+  - VisualNovel.unity 의 TestDialogueFiles.fileToRead → c절과 일치,
+    guid 36a3370f475b7434d97d70f5b3a3a2fe (testFile8.txt)를 그대로
+    가리키고 있었음
+  - DialogueParser/DL_COMMAND_DATA/ConversationManager의 `[wait]` +
+    괄호 문법 요구사항 → 코드 재확인 결과 c절 설명과 정확히 일치
+    (COMMAND_PATTERN은 괄호 필수, WAITCOMMAND_ID="[wait]" 접두어가
+    있어야 waitForCompletion=true)
+
+  → 불일치 1건 발견 : Avoid.unity Camera-Main의 AudioListener
+    컴포넌트가 c절에는 "여전히 존재"라고 되어 있었으나, 실제로는 이번
+    세션 사이(git diff 기준) 이미 제거되어 있었음 — Camera-Main의
+    m_Component 목록에도 참조가 없고 AudioListener 블록 자체가 파일에
+    없음. 같은 씬에서 Enemy 3개가 새 부모 오브젝트 "Enemy" 밑으로
+    재배치된 것도 함께 발견됨(이 계획과 무관한 하이어라키 정리로 추정).
+
+  → 이 1건은 "계획에 적힌 조치가 이미 완료되어 있어 중복 조치가 불필요"
+    한 경우이지 계획을 다시 세워야 할 만큼의 충돌은 아니라고 판단해,
+    이 항목만 스킵(추가 조치 없음)하고 나머지 항목은 계획서 d/f절
+    순서대로 그대로 진행함. (AudioListener 관련 계획서 c/d/g절 서술은
+    실제와 다르지만, 문서 관리 규칙상 ChangePlan은 항목별 보관용이라
+    수정하지 않고 이 완료 기록에 실제 상태를 남김)
+
+
+================================================================
+2. 기록
+================================================================
+
+  [ 변경 전 / 후 ]
+
+  ── Assets/Scenes/Avoid.unity : Camera-Main ────────────────
+
+  변경 전:
+  ```yaml
+  m_ClearFlags: 1                # Skybox
+  ...
+  m_Depth: -1
+  # m_Component 목록에 AudioListener 참조 없음 (계획 c절 서술과 달리
+  # 이미 제거된 상태였음 — 1절 참고)
+  ```
+
+  변경 후:
+  ```yaml
+  m_ClearFlags: 2                # Solid Color
+  ...
+  m_Depth: 1
+  ```
+
+  ── 신규 파일: Assets/Scripts/VisualNovel/Core/Commands/Database/
+     Extensions/CMD_DatabaseExtension_Avoid.cs ──────────────
+
+  변경 전: (파일 없음)
+
+  변경 후:
+  ```csharp
+  using DIALOGUE;
+  using System;
+  using System.Collections;
+  using UnityEngine;
+  using UnityEngine.SceneManagement;
+
+  namespace COMMANDS
+  {
+      public class CMD_DatabaseExtension_Avoid : CMD_DatabaseExtension
+      {
+          private const string AVOID_SCENE_NAME = "Avoid";
+
+          new public static void Extend(CommandDatabase database)
+          {
+              database.AddCommand("startAvoid", new Func<string[], IEnumerator>(StartAvoid));
+              database.AddCommand("endAvoid", new Func<string[], IEnumerator>(EndAvoid));
+          }
+
+          private static IEnumerator StartAvoid(string[] data)
+          {
+              yield return DialogueSystem.instance.Hide(0f, true);
+
+              yield return SceneManager.LoadSceneAsync(AVOID_SCENE_NAME, LoadSceneMode.Additive);
+
+              Debug.Log("[CMD_DatabaseExtension_Avoid] Avoid 씬 로드 완료");
+          }
+
+          private static IEnumerator EndAvoid(string[] data)
+          {
+              yield return SceneManager.UnloadSceneAsync(AVOID_SCENE_NAME);
+
+              yield return DialogueSystem.instance.Show(0f, true);
+          }
+      }
+  }
+  ```
+
+  ── 신규 파일: Assets/Resources/Dialogue Files/Test/
+     AvoidRoundTripTest.txt (+ .meta) ───────────────────────
+
+  변경 전: (파일 없음)
+
+  변경 후:
+  ```
+  narrator "피하기로 진입합니다" [wait]startAvoid()
+
+  [wait]endAvoid()
+
+  narrator "VN으로 복귀했습니다"
+  ```
+  .meta는 guid를 f7471525df7c4989a4fbe1448888555e 로 직접 지정해서
+  같이 작성함 (3절 참고 — 에디터 자동 생성을 기다리지 않고 바로
+  VisualNovel.unity에서 참조하기 위함)
+
+  ── Assets/Scenes/VisualNovel.unity : TestDialogueFiles.fileToRead ──
+
+  변경 전:
+  ```yaml
+  fileToRead: {fileID: 4900000, guid: 36a3370f475b7434d97d70f5b3a3a2fe, type: 3}
+  # testFile8.txt
+  ```
+
+  변경 후:
+  ```yaml
+  fileToRead: {fileID: 4900000, guid: f7471525df7c4989a4fbe1448888555e, type: 3}
+  # AvoidRoundTripTest.txt
+  ```
+
+
+  [ 변경 후 작동 흐름 ]
+
+  1. CommandManager.Awake()가 리플렉션으로 CMD_DatabaseExtension 하위
+     타입을 전부 스캔 → CMD_DatabaseExtension_Avoid.Extend()가 자동
+     호출되어 "startAvoid"/"endAvoid" 명령이 CommandDatabase에 등록됨
+     (수동 등록 불필요, CLAUDE.md에 적힌 구조 그대로)
+
+  2. 에디터 Play 모드로 VisualNovel.unity 진입 → TestDialogueFiles.
+     Start()가 fileToRead(이제 AvoidRoundTripTest.txt)를 읽어
+     VNManager를 통해 대화를 자동 시작
+
+  3. 첫 줄 "피하기로 진입합니다" 대사 출력 + 같은 줄에 있는
+     `[wait]startAvoid()` 파싱 → 대사가 다 출력된 뒤 사용자 입력을
+     받으면 LINE_RunCommands 실행
+     - DL_COMMAND_DATA.RipCommands가 `[wait]` 접두어를 보고 이름에서
+       떼어낸 뒤 waitForCompletion=true로 설정 → ConversationManager가
+       완료까지 대기하도록 분기
+     - StartAvoid 코루틴 실행 : DialogueSystem.Hide(0,true)로 대화창
+       즉시 숨김 → SceneManager.LoadSceneAsync("Avoid", Additive)가
+       끝날 때까지 대기 → 로그 출력
+     - Avoid 카메라(Depth 1)가 VN 카메라들(Depth 0 이하)보다 나중에
+       그려져 화면 전체가 Avoid 씬으로 전환됨. VN 씬은 언로드되지
+       않으므로 DialogueSystem/CharacterManager 등 VN 싱글톤은 계속
+       생존
+
+  4. 중간 줄(`[wait]endAvoid()`, 대사 없음)은 사용자가 입력(Enter
+     권장 — Space는 Avoid의 Jump와 충돌하므로 피할 것, h절 참고)해서
+     진행시켜야 실행됨. 실행되면:
+     - SceneManager.UnloadSceneAsync("Avoid") 완료까지 대기 → Avoid
+       씬 언로드
+     - DialogueSystem.Show(0,true)로 대화창 복귀
+
+  5. 마지막 줄 "VN으로 복귀했습니다" 대사 출력
+
+
+================================================================
+3. 저장 / 주의할 점
+================================================================
+
+  ■ 이 문서를 Assets/Docs/3. ChangeCompleted/[26.09.16_13.35] 애디티브
+    씬 로딩으로 VisualNovel-Avoid 왕복 전환 구현 완료.txt 로 저장함
+
+  ■ ★ Unity 에디터 Play 모드에서의 실제 실행 확인(계획서 f절 5~6번 —
+    VN → Avoid → VN 왕복이 실제로 되는지, 화면 가려짐 없는지, 대사
+    진행 상태/VariableStore 값이 유지되는지)은 이번 세션에서 코드/씬
+    파일만 변경했을 뿐 직접 수행하지 못했음. CLI 세션은 Unity 에디터를
+    대화식으로 열어 Play 버튼을 누르고 화면을 확인하는 것을 할 수
+    없으므로, 에디터를 열어 직접 확인 필요
+
+  ■ AvoidRoundTripTest.txt.meta의 guid(f7471525df7c4989a4fbe1448888555e)
+    를 직접 지정해서 파일 생성 시점부터 같이 커밋했음 — 에디터를 처음
+    열어 Asset Database가 리프레시될 때 이 .meta가 이미 있으므로 새
+    guid를 만들지 않고 그대로 써야 정상. 에디터를 열었을 때 콘솔에
+    "Missing"류 경고가 뜨는지 반드시 확인할 것 (뜨면 guid 불일치이므로
+    바로 알려줄 것)
+
+  ■ VisualNovel.unity의 fileToRead 변경은 임시 조치임 — 왕복 테스트
+    확인 후 원래 값(guid: 36a3370f475b7434d97d70f5b3a3a2fe, testFile8)
+    이나 다른 필요한 파일로 반드시 되돌릴 것. 안 그러면 이후 세션에서
+    VisualNovel.unity를 Play할 때마다 이 왕복 테스트 대본이 계속
+    자동으로 뜸
+
+  ■ Space 키 입력 충돌(VN "다음 대사"와 Avoid "Jump"가 둘 다 Space에
+    바인딩)은 이번 작업 범위 밖 — 여전히 미해결. 왕복 테스트 중 점프
+    확인은 생략하고, endAvoid 트리거는 Enter 키로 할 것 (계획서 e/h절
+    그대로 유지)
+
+  ■ Avoid.unity Camera-Main의 AudioListener는 이번 세션 시작 전에
+    이미 제거되어 있었음(1절 참고) — 계획서(2. ChangePlan) c/d/g절에는
+    여전히 "제거 필요"라고 적혀 있어 실제 상태와 어긋나지만, 문서 관리
+    규칙상 ChangePlan 문서 자체는 고치지 않고 이 완료 기록에만 실제
+    상태를 남김. 혹시 이후에 다른 원인으로 AudioListener가 다시
+    붙는다면 그때 재확인 필요
+
+  ■ Avoid.unity에서 함께 발견된 Enemy 3개의 하이어라키 재배치(새 부모
+    "Enemy" 오브젝트 생성)는 이번 ChangePlan과 무관하여 손대지 않음
+
+  ■ 이번 범위는 순수 "전환 매커니즘"까지만 — characterKey /
+    AvoidCharacterProfile / AvoidSceneController.Setup 등 보스 캐릭터
+    인터페이스는 포함하지 않음. 계획서 h절과 동일하게, 이번 왕복 확인이
+    끝나면 Assets/Docs/2. ChangePlan/[26.09.14_20.24] 문서를 이어서
+    진행할 것
+================================================================

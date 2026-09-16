@@ -41,7 +41,10 @@ public class PlayerAttack : MonoBehaviour
 	{
 		input			= GetComponent<PlayerInput>();
 		attackAction	= input.actions["Attack"];
-		mainCamera		= Camera.main;
+		// VN 씬과 Avoid 씬이 동시에 로드되어 있으면 카메라가 둘 다
+		// MainCamera 태그를 갖고 있어 Camera.main이 어느 쪽을 반환할지
+		// 보장되지 않는다. PlayerInput에 이미 연결된 이 씬의 카메라를 우선 사용
+		mainCamera		= input.camera != null ? input.camera : Camera.main;
 	}
 
 	private void OnEnable()

@@ -1,0 +1,5 @@
+narrator "피하기로 진입합니다" [wait]startAvoid()
+
+[wait]endAvoid()
+
+narrator "VN으로 복귀했습니다"

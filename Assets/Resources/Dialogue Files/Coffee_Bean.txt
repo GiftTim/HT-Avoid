@@ -7,3 +7,15 @@ narrator "번개가 친다."
 
 [wait]Mina.Move(2 -spd 1 -smt true)
 
+narrator "피하기로 진입합니다" 
+
+[wait]startAvoid()
+
+
+[wait]맨.Show(), 
+[wait]Mina.Show()
+
+[wait]맨.Move(0 -spd 2), 
+[wait]Mina.Move(1 -spd 2)
+
+맨 "그래 말해보거라"
