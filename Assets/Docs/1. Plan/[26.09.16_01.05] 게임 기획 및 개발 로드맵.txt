@@ -211,17 +211,36 @@ g. 구현 시 필요한 신규 시스템
   5. VN ↔ 미니게임 전환 커맨드
      - 기존 CommandManager에 새 명령어 추가 (예: [startAvoid], [openInventory])
      - CMD_DatabaseExtension을 상속한 새 확장 클래스로 구현 (리플렉션 자동 등록)
+     - 씬 레벨 연결 방식 : 애디티브 씬 로딩(LoadSceneMode.Additive) 채택
+       (확정, 26.09.14) → h절 참고
 
 
 ================================================================
 h. 기존 VN 엔진과의 연동 지점
 ================================================================
 
+  - 씬 레벨 연결 방식 : 애디티브 씬 로딩 (확정, 26.09.14)
+    · VN 씬(VisualNovel.unity)을 언로드하지 않은 채 미니게임 씬(예:
+      Avoid.unity)을 SceneManager.LoadSceneAsync(씬명, LoadSceneMode.
+      Additive)로 위에 얹는 방식
+    · 채택 이유 : DialogueSystem/CharacterManager/HistoryManager/
+      VariableStore 등 VN 핵심 싱글톤이 DontDestroyOnLoad 처리가 안
+      되어 있어서(AudioManager만 예외) 단일 모드 LoadScene으로 씬을
+      완전 교체하면 전부 파괴됨. 같은 씬 안에서 오브젝트 SetActive
+      토글하는 대안도 있었으나 3~5단계 콘텐츠가 한 씬에 계속 쌓여
+      비대해지는 문제가 있어 기각
+    · 주의 : 애디티브 로딩 시 VN 배경/그래픽 패널이 미니게임 씬 뒤에
+      그대로 남아있으므로, 미니게임 씬 카메라의 Depth를 VN 카메라보다
+      높게, Clear Flags를 Solid Color(또는 Depth Only)로 설정해 가려야
+      함 (에디터 작업)
+    · 상세 설계 : Assets/Docs/2. ChangePlan/[26.09.14_20.24] 피하기
+      게임 기초 구조 및 VN 연결.txt 참고 (Avoid 미니게임 기준으로
+      작성됐지만 연결 방식 자체는 다른 미니게임에도 동일 적용)
   - VariableStore : 피하기/카드 장착 결과값을 변수로 저장 → VN의
     LL_Condition이 이 변수를 읽어 대사 분기에 반영
     (예: "피하기 실패 시 다른 대사")
   - CommandManager : 대사 중 [startAvoid(스테이지명)] 같은 커맨드로
-    미니게임 씬/모드 진입
+    미니게임 씬/모드 진입 (애디티브 로딩 사용)
   - VNGameSave : 사이클 진행도(몇 번째 사이클, 보유 카드, 장착 구성 등)도
     함께 저장해야 함 → 기존 세이브 데이터 구조 확장 필요
   - 자동저장 체크포인트 (신규 필요, 확정 26.09.13) : 피하기 중 목숨을

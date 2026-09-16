@@ -1,0 +1,105 @@
+================================================================
+작업 기록 : 애디티브 씬 로딩 설명 및 왕복 테스트 ChangePlan 작성
+작성일 : 2026-09-16 01:59 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  이번 세션은 코드/씬 실작업 없이 "설명 + 계획 문서 작성"까지만
+  진행됨. 실제 구현/에디터 작업/Play 모드 테스트는 다음 세션으로
+  넘어감 (아래 "남은 것" 참고).
+
+  1. 애디티브 씬 로딩 개념 설명
+     - 사용자가 "에디티브(애디티브) 씬 로딩이 뭔지" 질문 → Single
+       모드(씬 전체 교체, 기존 싱글톤 파괴)와 Additive 모드(기존 씬
+       유지한 채 위에 얹음) 차이, 이 프로젝트에서 Additive를 쓰는
+       이유(VN 싱글톤들이 DontDestroyOnLoad 미적용이라 Single로
+       교체하면 다 죽음)를 설명
+     - 이어서 "어떻게 하는지" 구체적으로 재질문 → Build Settings 등록
+       필요성, LoadSceneAsync(씬명, LoadSceneMode.Additive) +
+       UnloadSceneAsync 코드 패턴, 씬 간 오브젝트 참조 방법(싱글톤
+       정적 참조), 카메라 Depth/Clear Flags로 VN 배경을 가려야 하는
+       에디터 작업까지 설명
+
+  2. 로드맵 문서에 "애디티브 씬 로딩" 결정 사항 반영
+     - Assets/Docs/1. Plan/[26.09.14_20.24] 피하기 게임 기초 구조 및
+       VN 연결.txt 에 이미 26.09.14에 확정돼 있던 "씬 레벨 연결 방식 =
+       애디티브 씬 로딩" 결정이 로드맵 본문(1. Plan)에는 자세히
+       반영이 안 돼 있던 것을 확인
+     - 로드맵 g절(5. VN ↔ 미니게임 전환 커맨드)에 한 줄 추가, h절
+       (기존 VN 엔진과의 연동 지점)에 채택 이유/주의점/상세 설계 문서
+       링크를 포함한 항목을 새로 추가
+     - 문서 관리 규칙에 따라 파일명 타임스탬프만 12.54 → 01.05로
+       갱신(삭제 후 재생성, 제목은 유지)
+
+  3. "지금 하는 게 하드코딩이냐"는 질문에 답변
+     - 질문 범위가 모호해서 되물어 확인한 결과 "전체적으로"(설계
+       전반)를 가리키는 것으로 확인
+     - 결론 : 전반적으로 하드코딩이 아니라 데이터 주도 설계에 가까움
+       (characterKey를 대본 인자로 넘겨 Resources.Load로 런타임에
+       프로필을 찾는 구조, ScriptableObject 프로필, 인스펙터 참조는
+       정상적인 데이터 바인딩이지 하드코딩이 아님). 유일하게
+       하드코딩에 가까운 지점은 SceneManager.LoadSceneAsync("Avoid", ...)
+       처럼 씬 이름 문자열이 코드에 리터럴로 박힌 부분 — 미니게임이
+       여러 개로 늘어나면 나중에 파라미터화 필요할 수 있음(현재는
+       범위 밖으로 남겨둠)
+
+  4. "VisualNovel ↔ Avoid 왕복 전환을 실제로 만들어서 실행까지
+     확인해보고 싶다"는 요청에 따라 ChangePlan 문서 작성
+     - 문서 작성 전 현재 코드/씬 상태를 직접 조사함:
+       · Assets/Scenes/Avoid.unity 는 이미 존재하지만 Build Settings
+         에는 VisualNovel.unity만 등록돼 있고 Avoid.unity는 미등록
+       · Avoid.unity의 Camera-Main : Clear Flags = Skybox, Depth = -1
+         (VN 카메라 중 가장 높은 Depth 0보다 낮아서 지금 상태로는
+         Avoid 화면이 VN 화면에 가려짐)
+       · VN/Avoid 양쪽 카메라 모두 AudioListener를 갖고 있어서 동시에
+         열리면 AudioListener 2개 충돌 문제가 생김을 새로 발견
+         (기존 설계 문서엔 없던 지점)
+       · Assets/Scripts/Avoid/Core/ 에는 AimCursor/AvoidPlayerController/
+         Enemy/IDamageable/MovementRigidbody2D/PlayerAttack/RespawnZone
+         까지만 있고, AvoidSceneController/CMD_DatabaseExtension_Avoid/
+         캐릭터 프로필 관련 스크립트는 여전히 미작성 상태
+     - 위 조사를 바탕으로 이번 ChangePlan은 캐릭터/보스 프로필
+       시스템은 범위 밖으로 명시적으로 제외하고, [startAvoid]/
+       [endAvoid] 커맨드만으로 순수 씬 전환 매커니즘을 검증하는
+       것으로 범위를 좁힘 (이유: 범위를 넓히면 아직 없는 ScriptableObject
+       프로필 때문에 핵심 검증 전에 막힐 위험이 있어서)
+     - 문서 저장 : Assets/Docs/2. ChangePlan/[26.09.16_01.49]
+       애디티브 씬 로딩으로 VisualNovel-Avoid 왕복 전환 테스트.txt
+
+  5. 위 변경사항(로드맵 갱신, ChangePlan 신규, 이 기록 파일) 전부
+     git으로 main에 직접 커밋 (사용자 요청, 26.09.16 — 이 프로젝트는
+     브랜치 안 쓰고 main에 바로 커밋하는 관례)
+
+
+[현재 확정된 것 / 남은 것]
+
+  확정 : 애디티브 씬 로딩 개념/이유 이해 완료, 로드맵 문서에 정식
+         반영 완료, 이번 라운드는 캐릭터/보스 시스템 빼고 순수 전환
+         매커니즘만 먼저 검증하기로 범위 확정, ChangePlan 문서 작성 완료
+
+  남은 것 (다음 세션에서 [26.09.16_01.49] ChangePlan 문서 그대로 착수):
+    - (에디터) Build Settings에 Avoid.unity 등록
+    - (에디터) Avoid.unity Camera-Main : Clear Flags → Solid Color,
+      Depth -1 → 1, AudioListener 컴포넌트 제거
+    - (코드) CMD_DatabaseExtension_Avoid.cs 신규 작성 (startAvoid/
+      endAvoid, characterKey 없이 인자 없는 형태)
+    - (테스트 자료) Assets/Resources/Dialogue Files/Test/
+      AvoidRoundTripTest.txt 작성
+    - (검증) 에디터 Play 모드로 VisualNovel.unity 실행, 실제 왕복
+      테스트 (화면 가려짐 없는지, 싱글톤 안 죽는지, 대사 상태 유지
+      되는지 등 ChangePlan h절 체크리스트대로 확인)
+    - 이번 왕복 검증이 끝난 뒤에는 [26.09.14_20.24] 문서에 설계된
+      캐릭터 인터페이스(보스 프로필/characterKey 연동) 작업으로 이어감
+
+
+[참고 문서]
+  - Assets/Docs/1. Plan/[26.09.16_01.05] 게임 기획 및 개발 로드맵.txt
+    (g/h절에 애디티브 씬 로딩 항목 추가)
+  - Assets/Docs/2. ChangePlan/[26.09.16_01.49] 애디티브 씬 로딩으로
+    VisualNovel-Avoid 왕복 전환 테스트.txt (다음 세션 착수 문서)
+  - Assets/Docs/2. ChangePlan/[26.09.14_20.24] 피하기 게임 기초 구조
+    및 VN 연결.txt (캐릭터 인터페이스까지 포함한 원래 설계, 이번
+    왕복 검증 이후 이어서 진행할 부분)
+
+================================================================

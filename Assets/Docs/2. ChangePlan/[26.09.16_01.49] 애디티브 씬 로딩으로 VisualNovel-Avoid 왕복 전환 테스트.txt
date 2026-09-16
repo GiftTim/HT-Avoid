@@ -1,0 +1,237 @@
+================================================================
+애디티브 씬 로딩으로 VisualNovel-Avoid 왕복 전환 테스트
+작성일 : 2026-09-16 01:49 (KST)
+================================================================
+
+[목차]
+  a. 목차
+  b. 요구한 기능
+  c. 현재 상황 및 코드
+  d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+  e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+  f. 어떤 순서로 진행할 것인지
+  g. 어디가 어떤 식으로 변경되는지
+  h. 주의할 점
+
+
+================================================================
+b. 요구한 기능
+================================================================
+
+  VisualNovel Scene과 Avoid Scene을 애디티브 씬 로딩(LoadSceneMode.
+  Additive)으로 연결해서 실제로 왔다갔다 전환해보고, 에디터 Play
+  모드에서 직접 실행시켜 확인한다 (사용자 요청, 26.09.16).
+
+  이번 범위는 "전환 매커니즘 자체"만 검증하는 것으로 한정함. 보스로
+  등장할 characterKey / AvoidCharacterProfile / AvoidSceneController.
+  Setup 같은 캐릭터 인터페이스 시스템은 포함하지 않음 (이미 Assets/
+  Docs/2. ChangePlan/[26.09.14_20.24] 피하기 게임 기초 구조 및 VN
+  연결.txt 에 설계되어 있으나 아직 미착수 상태 — h절 참고, 이번 검증이
+  끝난 뒤 이어서 진행 예정)
+
+  완료 조건 : 코드 작성으로 끝내지 않고, 에디터 Play 모드로 VN → Avoid
+  → VN 왕복이 실제로 되는지 직접 실행해서 확인하는 것까지 포함
+
+
+================================================================
+c. 현재 상황 및 코드
+================================================================
+
+  [ 씬 파일 / 빌드 세팅 ]
+  - Assets/Scenes/Avoid.unity 는 이미 존재함 (직전 세션 "피하기 게임
+    기본 조작·공격 인터페이스" 작업에서 만들어짐)
+  - 그러나 ProjectSettings/EditorBuildSettings.asset 의 빌드 씬
+    목록에는 VisualNovel.unity 만 등록되어 있고 Avoid.unity 는 등록
+    안 되어 있음 → 지금 상태로 SceneManager.LoadSceneAsync("Avoid", ...)
+    를 호출하면 이름으로 씬을 찾지 못함
+
+  [ 카메라 설정 ]
+  - VisualNovel.unity 안 카메라 4개(Camera-Main/Camera - Live2D/
+    Camera - Model3D/Camera-Overlay) 중 가장 높은 Depth는 0
+    (Camera-Main만 Depth -1)
+  - Avoid.unity 의 Camera-Main 은 Clear Flags = Skybox(1), Depth = -1
+    → 지금 상태로 애디티브 로딩하면 VN 카메라들(Depth 0)이 나중에
+    그려져서 Avoid 화면이 VN 화면에 가려짐 (로드맵 h절에 이미 적어둔
+    "카메라 처리 필요" 항목이 실제로 이 상태임을 확인)
+  - 두 씬 카메라 모두 AudioListener 컴포넌트를 갖고 있음 → 두 씬이
+    동시에 열리면 AudioListener가 2개 동시 활성화되어 Unity가 경고를
+    띄우고 오디오 출력이 불안정해짐 (h절 참고, 기존 문서엔 언급 없던
+    새로 발견한 지점)
+
+  [ 커맨드 시스템 ]
+  - CMD_DatabaseExtension_Avoid.cs 는 아직 없음
+  - 참고할 기존 패턴 : CMD_DatabaseExtension_General.cs 의 "hideui"/
+    "showui" 명령 — DialogueSystem.instance.Hide/Show(speed, immediate)
+    를 Func<string[], IEnumerator> 로 등록해 코루틴 안에서 yield로
+    대기하는 구조 (그대로 재사용 가능)
+  - CommandDatabase.AddCommand(이름, 델리게이트) + 리플렉션 자동 스캔
+    구조라 새 확장 클래스를 추가해도 수동 등록 불필요
+
+  [ Avoid 씬 안 오브젝트 ]
+  - "[Manager]", "[Avoid Controller]" 라는 빈 GameObject(Transform만
+    있음, 계층 정리용 폴더)가 이미 있지만 스크립트는 아직 안 붙어있음
+  - Avoid/Core 폴더에는 AimCursor/AvoidPlayerController/Enemy/
+    IDamageable/MovementRigidbody2D/PlayerAttack/RespawnZone 스크립트가
+    이미 있음(직전 세션 작업) — 이번 작업과 무관, 손 안 댐
+
+  [ VN 싱글톤 생존 범위 ]
+  - DialogueSystem/CharacterManager/HistoryManager/VariableStore는
+    DontDestroyOnLoad 미적용, VisualNovel.unity 씬 안에서만 생존
+  - AudioManager 만 DontDestroyOnLoad 사용 중
+  - (기존 로드맵/[26.09.14_20.24] 문서에 이미 정리된 내용, 애디티브
+    방식을 쓰는 근거이므로 재확인 차원에서 여기 다시 적음)
+
+
+================================================================
+d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+================================================================
+
+  1) (에디터) Build Settings에 Avoid.unity 등록
+     - File > Build Settings > Add Open Scenes(또는 드래그)로 등록
+     - VisualNovel.unity가 인덱스 0을 유지하도록 순서 확인
+
+  2) (에디터) Avoid.unity 의 Camera-Main 설정 변경
+     - Clear Flags : Skybox → Solid Color (또는 Depth Only)
+     - Depth : -1 → 1 (VN 카메라 중 가장 높은 값 0보다 위로)
+     - AudioListener 컴포넌트 제거 (VN 쪽 AudioListener 하나만 남김)
+
+  3) 신규 파일 : Assets/Scripts/VisualNovel/Core/Commands/Database/
+     Extensions/CMD_DatabaseExtension_Avoid.cs
+     - CMD_DatabaseExtension 상속, "startAvoid"/"endAvoid" 명령 등록
+       (Func<string[], IEnumerator>)
+     - startAvoid(string[] data) : 인자 없이 동작 ([startAvoid] 형태)
+       1. DialogueSystem.instance.Hide(0f, true) 로 대화 UI 즉시 숨김
+       2. yield return SceneManager.LoadSceneAsync("Avoid",
+          LoadSceneMode.Additive)
+       3. Debug.Log로 로드 완료 확인용 로그만 남김 (characterKey 기반
+          Setup 호출은 이번 범위 밖 — 보스 프로필 시스템 미착수)
+     - endAvoid(string[] data) : 인자 없이 동작 ([endAvoid] 형태)
+       1. yield return SceneManager.UnloadSceneAsync("Avoid")
+       2. DialogueSystem.instance.Show(0f, true) 로 대화 UI 복귀
+
+  4) 신규 파일 : Assets/Resources/Dialogue Files/Test/
+     AvoidRoundTripTest.txt (왕복 테스트 전용 대본)
+     - narrator "피하기로 진입합니다" [startAvoid]
+     - (Avoid 씬에서 직접 이동/공격 조작해본 뒤, 확인되면 대본에서
+       [endAvoid] 줄로 이어서 복귀)
+     - narrator "VN으로 복귀했습니다"
+
+  5) (실행) 에디터 Play 모드로 VisualNovel.unity 실행, 왕복 테스트
+     - AvoidRoundTripTest.txt 를 로드해 [startAvoid] 지점까지 진행
+     - 확인 항목 : 대화 UI가 사라지는지 / Avoid 씬이 VN 화면 위에
+       제대로 그려지는지(가려짐 없는지) / 플레이어 이동·공격이
+       정상 동작하는지 / Hierarchy에 VisualNovel·Avoid 두 씬이 동시에
+       떠 있고 VN 싱글톤 오브젝트가 파괴되지 않았는지
+     - [endAvoid] 진행 후 확인 항목 : Avoid 씬이 내려가는지 / 대화
+       UI가 정상 복귀하는지 / 대사 진행 상태·VariableStore 값이
+       유지되는지
+
+
+================================================================
+e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+================================================================
+
+  씬 연결 방식 자체(애디티브 로딩)는 26.09.14에 이미 확정된 결정이라
+  이번 문서에서 재검토하지 않음 (로드맵 h절 / [26.09.14_20.24] 문서
+  e절 참고). 이번에 새로 정한 부분만 아래에 정리:
+
+  [ characterKey/보스 프로필까지 이번에 같이 넣을지 여부 ]
+  - 대안 1 : 26.09.14 설계대로 AvoidCharacterProfile/
+    AvoidSceneController.Setup까지 한 번에 구현
+    · 장점 : 한 번에 로드맵 2단계를 다 끝낼 수 있음
+    · 단점 : 사용자가 이번에 원한 건 "왔다갔다 되는지 실행해서 확인"
+      인데, 범위를 넓히면 아직 안 만든 ScriptableObject 프로필 쪽에서
+      막혀 정작 검증하려는 핵심(씬 전환 자체)을 못 볼 위험이 있음
+      → 기각
+  - 대안 2 (채택) : characterKey 없이 [startAvoid]/[endAvoid]만으로
+    순수 전환 매커니즘만 먼저 검증
+    · 장점 : 테스트 대상이 명확함(전환이 되는지 안 되는지만 봄),
+      문제가 생겨도 원인을 좁히기 쉬움
+    · 단점 : 보스 프로필 연동은 다음 ChangePlan에서 별도로 다시 작업
+      해야 함 → 감수 가능(어차피 로드맵 2단계 잔여 작업으로 이미
+      예정돼 있던 부분)
+    → 이번 세션에서 채택
+
+  [ AudioListener 2개 동시 활성화 문제 처리 ]
+  - 대안 1 : 그냥 둔다
+    · 단점 : 어느 쪽이 활성 리스너가 될지 예측 불가능하고, 나중에 VN
+      배경음/Avoid 효과음이 뒤섞이는 문제로 이어질 수 있음 → 기각
+  - 대안 2 (채택) : Avoid 카메라의 AudioListener 컴포넌트 제거
+    · VN 쪽 하나만 유지해 사운드 출력 지점을 명확히 함. Avoid
+      카메라는 화면(Depth/Clear Flags)만 담당
+    → 이번 세션에서 새로 결정
+
+
+================================================================
+f. 어떤 순서로 진행할 것인지
+================================================================
+
+  1. (에디터) Build Settings에 Avoid.unity 등록
+  2. (에디터) Avoid.unity Camera-Main 설정 변경 : Clear Flags →
+     Solid Color, Depth → 1, AudioListener 제거
+  3. (코드) CMD_DatabaseExtension_Avoid.cs 작성
+  4. (테스트 자료) AvoidRoundTripTest.txt 작성
+  5. (검증) 에디터 Play 모드로 VisualNovel.unity 실행, 왕복 테스트
+  6. 문제 발생 시 원인별 수정 (예상 이슈는 h절 참고)
+
+
+================================================================
+g. 어디가 어떤 식으로 변경되는지
+================================================================
+
+  [ 신규 파일 ]
+  - Assets/Scripts/VisualNovel/Core/Commands/Database/Extensions/
+    CMD_DatabaseExtension_Avoid.cs — startAvoid/endAvoid 명령
+  - Assets/Resources/Dialogue Files/Test/AvoidRoundTripTest.txt —
+    왕복 테스트용 대본 (실제 스토리 아님, 검증 후 삭제 가능)
+
+  [ 기존 파일/씬 변경 ]
+  - ProjectSettings/EditorBuildSettings.asset — Avoid.unity 빌드 씬
+    목록에 추가
+  - Assets/Scenes/Avoid.unity — Camera-Main의 Clear Flags(Skybox→
+    Solid Color), Depth(-1→1), AudioListener 컴포넌트 제거
+
+  [ 변경 없음 ]
+  - Avoid/Core 하위 스크립트(AimCursor 등 이동/공격 인터페이스) —
+    이번 작업과 무관, 손 안 댐
+  - DialogueSystem.cs / CommandManager.cs — 리플렉션 자동 등록
+    구조라 새 명령 추가에 수정 불필요
+  - VisualNovel.unity — 카메라/오브젝트 변경 없음 (Avoid 쪽만 조정)
+
+
+================================================================
+h. 주의할 점
+================================================================
+
+  ■ 이번 범위는 순수 "전환 매커니즘 검증"까지만. 보스 캐릭터
+    (characterKey)/AvoidCharacterProfile/AvoidSceneController/카드-
+    인벤토리 연동은 명시적으로 범위 밖 — Assets/Docs/2. ChangePlan/
+    [26.09.14_20.24] 문서에 이미 설계되어 있으니 이번 검증이 끝나면
+    그 문서를 이어서 진행
+
+  ■ endAvoid는 지금 대본에 직접 [endAvoid] 줄을 넣어 테스트하는
+    임시 수단 (실제 자동 호출은 로드맵 5단계 보스 설계에서 처리 예정
+    — 기존 로드맵/[26.09.14_20.24] 문서에 이미 명시된 내용과 동일)
+
+  ■ Build Settings 등록을 빼먹으면 SceneManager.LoadSceneAsync
+    ("Avoid", ...)가 씬을 못 찾아 실패함 — d절 1)을 반드시 먼저 처리
+
+  ■ Avoid 카메라 Depth를 VN 카메라들의 최댓값(0)보다 낮게 두면 VN
+    화면에 Avoid 화면이 가려서 안 보임 (지금 상태 그대로 두면 재현
+    되는 문제) — d절 2)에서 반드시 VN보다 높은 값(1 이상)으로 설정
+
+  ■ AudioListener가 씬에 2개 이상 활성화되면 콘솔에 경고가 뜨고
+    오디오 출력이 불안정해질 수 있음 — Avoid 카메라 쪽 AudioListener를
+    제거해서 VN 쪽 하나만 남길 것
+
+  ■ 왕복 후 VN 대사 진행 상태(ConversationManager)/VariableStore
+    값이 유지되는지도 함께 확인할 것 — 애디티브 로딩은 VN 씬을
+    언로드하지 않으므로 이론상 유지되어야 하나, 실제 Play 모드
+    테스트에서 검증 필요
+
+  ■ Avoid 씬의 "[Manager]"/"[Avoid Controller]" 빈 오브젝트는 이번
+    작업에서 스크립트를 붙이지 않음(스크립트 자리만 있는 상태) —
+    다음 ChangePlan(보스/캐릭터 인터페이스)에서 AvoidSceneController
+    등을 여기에 붙일 예정
+
+================================================================
