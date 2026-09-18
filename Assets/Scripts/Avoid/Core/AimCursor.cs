@@ -2,22 +2,22 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 마우스 커서 위치를 따라다니는 조준용 Sprite(UI Image). 시스템 커서는
-/// 숨기고 이 Sprite로 대체한다. Screen Space - Overlay Canvas 아래
-/// RectTransform이 붙은 오브젝트에 부착해서 쓴다.
+/// 마우스 커서 위치를 따라다니는 조준용 Sprite. 시스템 커서는 숨기고 이
+/// Sprite로 대체한다. Player/Ground/Fly와 동일하게 월드 스페이스
+/// SpriteRenderer로 orthographic 카메라 기준 좌표에 배치하므로, UI Canvas
+/// 스케일링(CanvasScaler)의 영향을 받지 않아 해상도·화면비가 달라져도
+/// 크기가 달라지지 않는다.
 /// </summary>
-[RequireComponent(typeof(RectTransform))]
+[RequireComponent(typeof(SpriteRenderer))]
 public class AimCursor : MonoBehaviour
 {
-	private	RectTransform	rectTransform;
-	private	RectTransform	parentRectTransform;
-	private	Canvas			canvas;
+	[SerializeField]
+	private	Camera	targetCamera;	// 비워두면 Camera.main 사용. VN·Avoid 씬이 동시에 로드되어 있으면 MainCamera 태그가 겹치므로 이 씬의 카메라를 직접 지정할 것
 
 	private void Awake()
 	{
-		rectTransform = GetComponent<RectTransform>();
-		parentRectTransform = rectTransform.parent as RectTransform;
-		canvas = GetComponentInParent<Canvas>();
+		if ( targetCamera == null )
+			targetCamera = Camera.main;
 	}
 
 	private void OnEnable()
@@ -32,14 +32,17 @@ public class AimCursor : MonoBehaviour
 
 	private void Update()
 	{
-		if ( Mouse.current == null || canvas == null || parentRectTransform == null )
+		if ( Mouse.current == null || targetCamera == null )
 			return;
 
-		// Screen Space - Overlay는 카메라가 필요 없고, Camera/World 모드는
-		// 캔버스에 지정된 렌더 카메라 기준으로 스크린 좌표를 변환해야 한다.
-		Camera eventCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+		Vector2	screenPos	= Mouse.current.position.ReadValue();
+		screenPos.x	= Mathf.Clamp(screenPos.x, 0, Screen.width);
+		screenPos.y	= Mathf.Clamp(screenPos.y, 0, Screen.height);
 
-		if ( RectTransformUtility.ScreenPointToLocalPointInRectangle( parentRectTransform, Mouse.current.position.ReadValue(), eventCamera, out Vector2 localPoint ) )
-			rectTransform.anchoredPosition = localPoint;
+		Ray		ray		= targetCamera.ScreenPointToRay(screenPos);
+		Plane	plane	= new Plane(Vector3.forward, new Vector3(0, 0, transform.position.z));
+
+		if ( plane.Raycast(ray, out float distance) )
+			transform.position = ray.GetPoint(distance);
 	}
 }

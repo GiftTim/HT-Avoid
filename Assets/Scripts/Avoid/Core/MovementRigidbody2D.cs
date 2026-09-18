@@ -69,6 +69,11 @@ public class MovementRigidbody2D : MonoBehaviour
 		{
 			rigid2D.gravityScale = highGravity;
 		}
+
+		// 플레이어가 화면 경계(Constants.min/max) 밖으로 나가지 않도록 위치 제한
+		rigid2D.position = new Vector2(
+			Mathf.Clamp(rigid2D.position.x, Constants.min.x, Constants.max.x),
+			Mathf.Clamp(rigid2D.position.y, Constants.min.y, Constants.max.y));
 	}
 
 	/// <summary>
