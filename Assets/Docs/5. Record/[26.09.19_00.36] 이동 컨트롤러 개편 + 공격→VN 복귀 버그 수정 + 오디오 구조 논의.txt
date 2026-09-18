@@ -1,0 +1,94 @@
+================================================================
+작업 기록 : 이동 컨트롤러 개편 + 공격→VN 복귀 버그 수정 + 오디오 구조 논의
+작성일 : 2026-09-19 00:36 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  1. MovementRigidbody2D.cs 이동/점프 로직 개편
+     - 사용자가 준비해온 새 버전으로 교체. 주요 변경점:
+       · MoveTo(x) : 기존엔 velocity.x를 매 프레임 즉시 덮어썼는데,
+         groundAcceleration/airAcceleration + Mathf.MoveTowards로
+         점진적으로 목표 속도에 도달하도록 바뀜 (메이플식 미끄러지는
+         이동감)
+       · 중력 : 기존 lowGravity/highGravity 2단계 → riseGravity(4,
+         롱점프 유지)/jumpCutGravity(8, 점프키 뗐을 때)/fallGravity(7,
+         하강 중) 3단계로 분리, ApplyGravityScale()로 메서드 분리.
+         하강 중력을 상승보다 세게 줘서 붕뜨는 느낌 제거
+       · maxFallSpeed(18)로 종단 속도 제한하는 ClampFallSpeed() 신규
+       · jumpForce 10→12, maxJumpCount 기본값 2→1
+     - 사용자가 붙여넣은 새 코드에는 기존에 있던 화면 경계 클램프
+       (FixedUpdate 끝의 Constants.min/max Mathf.Clamp)가 빠져있었음
+       → 확인 질문 후 "기존 경계 제한 코드 유지"로 답변받아 다시
+       살려서 병합. DestroyByPosition이 Constants.min/max 밖으로
+       나간 오브젝트를 파괴하는 로직과도 연동되는 부분이라 제거하면
+       안 되는 지점이었음
+
+  2. "공격했는데 왜 VN로 안 넘어가지" 버그 조사 및 수정
+     - PlayerAttack → Enemy.TakeDamage → CMD_DatabaseExtension_Avoid.
+       ReturnToVN() 흐름 자체는 코드상 문제 없음을 확인
+     - 원인 : PlayerAttack.enemyLayer가 씬에서 레이어 9번(Enemy,
+       m_Bits: 512)만 필터링하도록 설정돼 있는데, Pattern01이 실제로
+       스폰하는 Fly.prefab(Assets/Resources/Enermies/Prefab/Fly.prefab)
+       은 m_Layer: 0(Default)로 저장돼 있어서 Physics2D.
+       OverlapCircleAll(hitCenter, attackRadius, enemyLayer)에 아예
+       걸리지 않았음 → TakeDamage()가 호출된 적이 없었음
+     - 조치 : Fly.prefab의 m_Layer를 0 → 9(Enemy)로 직접 수정 (YAML
+       텍스트 편집, 에디터 재오픈 전이라 diff로 확인 가능)
+     - 부가 발견(미수정) : 같은 폴더의 Enemy.prefab(현재 Pattern01이
+       쓰는 프리팹은 아님)은 Enemy.cs 스크립트 자체가 안 붙어있어서,
+       나중에 이 프리팹을 실제로 쓰게 되면 똑같이 IDamageable이 없어
+       TakeDamage가 안 먹힘. Fly.prefab에는 Enemy/MovementTransform2D/
+       DestroyByPosition이 다 붙어있는 것과 대조적 — 다음에 이 프리팹을
+       쓸 계획이 생기면 그때 스크립트 추가 + 레이어 맞춰야 함
+
+  3. Pattern01의 오디오 관련 코드 확인 (사용자 질문에 답변만, 수정 없음)
+     - SpawnEnemies() 코루틴이 spawnCycle(0.1초)마다 audioSource.
+       isPlaying == false면 audioSource.Play()로 재생 — 클립이 끝날
+       때마다 자동으로 반복 재생시키는 구조
+     - 씬에 연결된 실제 클립은 Assets/Resources/Audio/Voices/
+       적이 나타나서.mp3 (Loop=0, PlayOnAwake=0) — Music 폴더의
+       진짜 BGM이 아니라 Voices 폴더의 보이스 라인이었음
+
+  4. VN AudioManager와의 통합 여부 논의 (설계 논의만, 코드 변경 없음)
+     - 사용자 문제의식 : VN 쪽에 Voice/BGM/SFX가 이미 AudioManager로
+       통합돼 있는데, Avoid에 로컬 AudioSource를 따로 두는 게 맞는지
+     - AudioManager(Assets/Scripts/VisualNovel/Core/Audio/AudioManager.cs)
+       는 DontDestroyOnLoad 싱글톤이고, Avoid는 VN 위에 애디티브로
+       얹히는 구조라 VN 씬이 언로드되지 않으므로 Avoid 쪽 스크립트에서도
+       AudioManager.instance를 그대로 호출 가능한 상태임을 확인
+     - 결론(제안) : Pattern01의 로컬 AudioSource를 걷어내고
+       AudioManager.instance.PlayVoice("Audio/Voices/적이 나타나서")
+       형태로 바꾸는 걸 추천 — 현재 구조는 SFX/Voice 믹서 그룹(볼륨
+       설정 등)을 전부 우회하는 게 단점. "재생 중이 아니면 다시 재생"
+       로직은 PlayVoice가 반환하는 AudioSource를 직접 들고 있다가
+       isPlaying 체크하는 형태로 옮기면 될 것으로 보임
+     - 사용자 결정 : 오늘은 설계 확인까지만, 실제 리팩터링은 다음
+       세션에서 진행하기로 함
+
+
+[현재 확정된 것 / 남은 것]
+
+  확정 : MovementRigidbody2D 개편 코드 적용 완료(경계 클램프 포함),
+         Fly.prefab 레이어 버그 수정 완료, Pattern01→AudioManager
+         전환이 다음에 할 일로 방향 확정
+
+  남은 것 (다음 세션):
+    - Pattern01의 로컬 AudioSource 제거 → AudioManager.instance.
+      PlayVoice(...)로 교체
+    - (선택) Enemy.prefab에 Enemy.cs/MovementTransform2D/
+      DestroyByPosition 붙이고 레이어를 Enemy(9)로 맞추기 — 이 프리팹을
+      실제로 쓸 계획이 생겼을 때
+    - MovementRigidbody2D 새 이동감(가속/3단 중력)이 실제 Play 모드에서
+      의도대로 느껴지는지 플레이테스트 필요 (이번 세션엔 코드만 적용,
+      실행 검증은 아직 안 함)
+
+
+[참고 파일]
+  - Assets/Scripts/Avoid/Core/MovementRigidbody2D.cs (개편)
+  - Assets/Resources/Enermies/Prefab/Fly.prefab (레이어 수정)
+  - Assets/Resources/Enermies/Prefab/Enemy.prefab (스크립트 누락, 미수정)
+  - Assets/Scripts/Avoid/Core/Pattern01.cs (다음 세션 리팩터링 대상)
+  - Assets/Scripts/VisualNovel/Core/Audio/AudioManager.cs (통합 대상)
+
+================================================================
