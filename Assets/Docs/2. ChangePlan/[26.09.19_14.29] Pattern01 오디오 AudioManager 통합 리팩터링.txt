@@ -1,0 +1,349 @@
+================================================================
+Pattern01 오디오 AudioManager 통합 리팩터링
+작성일 : 2026-09-19 14:29 (KST)
+================================================================
+
+[목차]
+  a. 목차
+  b. 요구한 기능
+  c. 현재 상황 및 코드
+  d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+  e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+  f. 어떤 순서로 진행할 것인지
+  g. 어디가 어떤 식으로 변경되는지
+  h. 주의할 점
+
+
+================================================================
+b. 요구한 기능
+================================================================
+
+  Pattern01(Avoid 씬의 적 스폰 패턴)이 자기 GameObject에 붙은 로컬
+  AudioSource로 음성을 재생하는 구조를 걷어내고, VN 쪽에 이미 있는
+  AudioManager(싱글톤)를 통해 Voice 믹서 그룹으로 재생하도록 바꾼다.
+
+  [ 진행 전 확인 사항 (질문 프롬프트 항목) ]
+  - 대상 씬 : Assets/Scenes/Avoid.unity (Pattern01 오브젝트).
+              VisualNovel.unity 의 AudioManager는 읽기만 하고 수정 안 함
+  - 현재 상태 : Pattern01이 로컬 AudioSource로 "적이 나타나서.mp3"를
+                재생 중, 믹서 그룹 미연결(OutputAudioMixerGroup: 없음)
+  - 참고 자료 : Assets/Scripts/Avoid/Core/Pattern01.cs,
+                Assets/Scripts/VisualNovel/Core/Audio/AudioManager.cs,
+                Assets/Scripts/VisualNovel/Core/Commands/Database/
+                Extensions/CMD_DatabaseExtension_Avoid.cs,
+                Assets/Configuration/Main.mixer
+  - 참고 계획 : Assets/Docs/5. Record/[26.09.19_00.36] ... .txt 의
+                "3. Pattern01 오디오 코드 확인", "4. AudioManager 통합
+                여부 논의" (설계 확인까지만 하고 리팩터링은 이번 세션으로
+                미뤘던 건)
+
+  완료 조건 : 코드 수정으로 끝내지 않고, VisualNovel → Avoid 진입 →
+  음성 재생/반복 → VN 복귀 시 음성 정리까지 Play 모드에서 확인
+
+
+================================================================
+c. 현재 상황 및 코드
+================================================================
+
+  ※ 아래는 이번 세션에서 실제 파일(스크립트/씬 YAML)을 다시 읽어
+    확인한 내용
+
+  [ Pattern01.cs 현재 코드 (Assets/Scripts/Avoid/Core/Pattern01.cs) ]
+  - 필드 : enemyPrefab, spawnCycle(씬 값 0.1), private AudioSource
+    audioSource
+  - Awake() : audioSource = GetComponent<AudioSource>()
+  - OnEnable() : StartCoroutine(nameof(SpawnEnemies))
+  - OnDisable() : StopCoroutine(nameof(SpawnEnemies))
+  - SpawnEnemies() : 1초 대기 후 while(true) 루프에서 매 spawnCycle
+    마다 (1) audioSource.isPlaying == false 면 audioSource.Play()
+    (2) 화면 위쪽 랜덤 x 좌표에 enemyPrefab Instantiate
+    → 즉 "음성이 끝나면 다시 재생"하는 반복 재생 구조
+
+  [ Avoid.unity 의 Pattern01 오브젝트 (fileID 887357780) ]
+  - 컴포넌트 3개 : Transform / Pattern01(MonoBehaviour) / AudioSource
+  - AudioSource : m_Resource = 적이 나타나서.mp3
+    (guid ef7fbd5d..., Assets/Resources/Audio/Voices/ 안),
+    OutputAudioMixerGroup = 없음(fileID 0), PlayOnAwake=0, Loop=0,
+    Volume=1, Pitch=1
+  - Pattern01 필드 : enemyPrefab = Fly.prefab(guid 02900b60...),
+    spawnCycle = 0.1
+
+  [ AudioManager.cs (VN 쪽, Assets/Scripts/VisualNovel/Core/Audio/) ]
+  - DontDestroyOnLoad 싱글톤, AudioManager.instance 로 접근
+  - 인스펙터 연결된 믹서 그룹 : musicMixer / sfxMixer / voicesMixer
+    (VisualNovel.unity 안 AudioManager 컴포넌트에 Main.mixer 그룹 3개
+    연결되어 있음 확인)
+  - PlayVoice(AudioClip clip, float volume=1, float pitch=1,
+    bool loop=false) → PlaySoundEffect(clip, voicesMixer, ...) 호출
+  - PlaySoundEffect(AudioClip ...) 동작 :
+      · "SFX - [클립이름]" GameObject를 새로 만들어 sfxRoot(AudioManager의
+        자식) 아래에 붙이고 AudioSource 추가, 믹서 그룹 지정, 2D
+        (spatialBlend 0), Play()
+      · loop == false 면 Destroy(오브젝트, clip.length/pitch + 1초)
+        로 자동 삭제 예약
+      · 재생 중인 AudioSource 를 반환
+  - PlayVoice(string filePath ...) 는 매 호출마다 Resources.Load 실행,
+    로드 실패 시 LogError 후 null 반환
+
+  [ Avoid 씬에서 오디오를 쓰는 다른 코드 ]
+  - Assets/Scripts 전체 검색 결과, Avoid 쪽에서 AudioSource/AudioManager를
+    쓰는 곳은 Pattern01이 유일함 (PlayerAttack/Enemy 등에는 소리 없음)
+
+  [ 씬 전환 관련 ]
+  - CMD_DatabaseExtension_Avoid.StartAvoid : Avoid 씬을 Additive 로드
+    (VN 씬은 유지 → AudioManager도 살아있음)
+  - ReturnToVN : SceneManager.UnloadSceneAsync("Avoid") 후 VN UI 복귀
+  - Avoid.unity 에는 AudioListener 가 없음(검색 결과 없음) → Avoid 씬
+    단독 Play 시에는 애초에 소리가 안 남. 소리는 VN 씬(AudioListener
+    보유)과 같이 떠 있을 때만 들림
+
+
+================================================================
+d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+================================================================
+
+  ■ 어떤 점이 문제가 되는가
+  1) Voice 믹서 그룹을 우회함
+     - Pattern01의 로컬 AudioSource는 믹서 출력이 없어서 Master로 바로
+       나감. VN 쪽 음성은 전부 voicesMixer 그룹을 거치므로, 나중에
+       옵션 메뉴에서 음성 볼륨을 조절해도 Avoid 음성은 반응하지 않음
+  2) 오디오 재생 경로가 이원화됨
+     - VN은 AudioManager 하나로 통일되어 있는데 Avoid만 씬 안에
+       AudioSource를 따로 관리. 앞으로 Avoid에 효과음/보스 음성이 늘면
+       똑같이 로컬 AudioSource가 계속 늘어나게 됨
+  3) 재생 파라미터(클립)가 씬 컴포넌트에 흩어져 있음
+     - 클립이 AudioSource 컴포넌트 쪽에 걸려 있어 Pattern01 코드만 봐서는
+       무슨 소리를 재생하는지 알 수 없음
+
+  ■ 어떻게 고칠 것인가 (변경 내용)
+
+  1) Pattern01.cs 수정
+     - 제거 : private AudioSource audioSource, Awake() 전체
+       (GetComponent<AudioSource>() 가 더는 필요 없음)
+     - 추가 : [SerializeField] private AudioClip voiceClip
+       (인스펙터에서 지정하는 반복 재생 음성)
+     - 추가 : private AudioSource voiceSource
+       (AudioManager.PlayVoice 가 돌려준, 현재 재생 중인 소스 참조)
+     - 추가 : PlayVoice() / StopVoice() 두 개의 private 메서드
+     - SpawnEnemies() 안의 audioSource 체크 부분을 voiceSource 체크로
+       교체
+     - OnDisable() 에 StopVoice() 호출 추가
+
+  2) 코드 형태 (작성 예정안, 탭 들여쓰기는 기존 파일 스타일 유지)
+
+     [SerializeField]
+     private	AudioClip	voiceClip;		// 패턴 진행 중 반복 재생할 음성
+
+     private	AudioSource	voiceSource;	// AudioManager가 재생 중인 음성
+
+     private void OnDisable()
+     {
+         StopCoroutine(nameof(SpawnEnemies));
+         StopVoice();
+     }
+
+     // SpawnEnemies() while 루프 안
+     // 재생이 끝나면 AudioManager가 오브젝트를 파괴하므로 null 체크가 먼저
+     if ( voiceSource == null || voiceSource.isPlaying == false )
+     {
+         PlayVoice();
+     }
+
+     private void PlayVoice()
+     {
+         if ( voiceClip == null || AudioManager.instance == null ) return;
+
+         voiceSource = AudioManager.instance.PlayVoice(voiceClip);
+     }
+
+     private void StopVoice()
+     {
+         if ( voiceSource != null )
+         {
+             Destroy(voiceSource.gameObject);
+         }
+         voiceSource = null;
+     }
+
+  3) Avoid.unity 에디터 작업 (Pattern01 오브젝트)
+     - Pattern01 컴포넌트의 새 필드 Voice Clip 에
+       Assets/Resources/Audio/Voices/적이 나타나서.mp3 를 지정
+     - 그 다음에 AudioSource 컴포넌트를 제거 (순서 중요: 클립 지정을
+       먼저 하고 제거해야 어떤 클립이었는지 잃어버리지 않음)
+     - (대안) 에디터를 닫은 상태에서 Avoid.unity YAML을 직접 편집해도
+       됨 — Pattern01 MonoBehaviour 블록에
+       `voiceClip: {fileID: 8300000, guid: ef7fbd5d4e12fb04880950476f4139d4, type: 3}`
+       추가 + AudioSource 블록(&887357783)과 m_Component 목록의
+       해당 줄 삭제. 이전 세션에 Fly.prefab 레이어를 YAML로 고친
+       전례가 있음. 다만 씬 파일 손상 위험이 있어 에디터 작업을 우선
+       권장
+
+
+================================================================
+e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+================================================================
+
+  [ 로컬 AudioSource를 유지하되 믹서 그룹만 연결할지 ]
+  - 대안 1 : 로컬 AudioSource 컴포넌트는 그대로 두고 인스펙터에서
+    OutputAudioMixerGroup 만 Main.mixer 의 Voices 로 지정 (코드 수정 0)
+    · 장점 : 가장 간단, 볼륨 그룹 우회 문제는 해결됨
+    · 단점 : 오디오 경로가 VN(AudioManager) / Avoid(로컬) 둘로 계속
+      갈라져 있음. 앞으로 늘어날 Avoid 효과음/음성도 각자 로컬 소스를
+      들고 있게 되고, 정지/정리도 각자 관리해야 함. 사용자가 이번에
+      제기한 문제의식("VN에 이미 통합돼 있는데 Avoid에 로컬 소스를
+      따로 두는 게 맞는가")과 반대 방향 → 기각
+  - 대안 2 (채택) : AudioManager 경유로 통합
+
+  [ 클립을 문자열 경로로 지정할지, AudioClip 필드로 지정할지 ]
+  - 대안 1 : AudioManager.instance.PlayVoice("Audio/Voices/적이 나타나서")
+    (26.09.19 Record의 초안)
+    · 단점 : PlayVoice(string) 은 호출마다 Resources.Load 를 실행하는데
+      이 코드는 spawnCycle(0.1초)마다 재생 여부를 검사함. 대부분은 재생
+      중이라 호출이 안 되지만, 경로 오타/파일명 변경(현재 한글
+      파일명) 시 0.1초마다 LogError가 쏟아질 수 있음. 또 경로 문자열이
+      코드에 박혀 패턴마다 다른 음성을 쓰려면 코드를 고쳐야 함 → 기각
+  - 대안 2 (채택) : [SerializeField] AudioClip voiceClip 로 지정하고
+    PlayVoice(AudioClip) 오버로드 사용
+    · 이유 : 이미 씬에서 AudioSource에 클립을 인스펙터로 지정하던 방식
+      그대로라 작업 흐름이 안 바뀌고, 패턴 프리팹/오브젝트마다 다른
+      음성을 쓰기도 쉬움. 파일이 없으면 인스펙터에서 Missing으로
+      바로 보임. Resources.Load 반복 호출도 없음
+
+  [ "재생이 끝나면 다시 재생"을 어떻게 옮길지 ]
+  - 대안 1 : AudioManager.PlayVoice(voiceClip, loop: true) 를 한 번만
+    호출하고 끝
+    · 장점 : 폴링 코드/null 체크가 필요 없고 끊김 없이 이어짐
+    · 단점 1 : loop == true 로 만들어진 SFX 오브젝트는 AudioManager가
+      자동 삭제를 예약하지 않음(코드의 if(!loop) 분기). Pattern01이
+      OnDisable을 못 타는 예외 상황이 생기면 DontDestroyOnLoad 아래에
+      무한 반복 음성이 고아로 남음 — 실패 시 영구 잔류라 위험이 큼
+    · 단점 2 : 현재 동작(끝난 뒤 다음 스폰 틱에서 다시 재생)과 미세하게
+      달라짐. 이번 작업은 "구조 통합"이 목적이라 동작은 그대로 유지하는
+      게 검증하기 쉬움 → 기각
+  - 대안 2 (채택) : 기존과 동일하게 매 틱마다 "재생 중이 아니면 다시
+    재생" 유지, 소스 참조를 들고 isPlaying 확인
+    · 이유 : 재생이 끝나면 AudioManager가 알아서 오브젝트를 파괴하므로
+      예외 상황에서도 최대 (클립 길이 + 1초) 후엔 자동 정리됨 (fail-safe).
+      동작이 기존과 동일해서 통합 전후 비교가 명확함
+    · 핵심 포인트 : AudioManager는 재생이 끝난 뒤 1초 뒤에 오브젝트를
+      Destroy 하므로 그 사이엔 참조는 살아있지만 isPlaying == false,
+      Destroy 후엔 참조가 Unity null 이 됨 → 두 경우 모두 "다시 재생"
+      으로 처리해야 해서 `voiceSource == null || !voiceSource.isPlaying`
+      조건이 필요
+
+  [ Avoid 씬이 내려갈 때 음성 정리를 어떻게 할지 ]
+  - 문제 : 로컬 AudioSource는 씬이 언로드되면 같이 사라져 음성이
+    자동으로 멈췄음. 그런데 AudioManager가 만든 "SFX - [...]" 오브젝트는
+    DontDestroyOnLoad 인 AudioManager의 자식이라 Avoid 씬이 언로드되어도
+    안 사라짐 → 그냥 두면 VN에 복귀한 뒤에도 음성이 끝까지 계속 들림
+  - 대안 1 : AudioManager.StopSoundEffect("적이 나타나서") (이름 기반)
+    · 단점 : 첫 번째로 매칭되는 소스만 지우고 return 하며, 같은 이름을
+      쓰는 다른 재생과 섞일 수 있음. 또 source.clip 이 null 인 소스가
+      있으면 NullReferenceException 여지가 있음 → 기각
+  - 대안 2 (채택) : Pattern01이 자기가 재생 시작한 소스 참조를 들고
+    있다가 OnDisable 에서 직접 Destroy(voiceSource.gameObject)
+    · 이유 : 남의 재생을 건드릴 위험 없음. 씬 언로드 시 OnDisable이
+      호출되므로 기존의 "씬이 내려가면 소리도 멈춤" 동작을 그대로 복원
+
+
+================================================================
+f. 어떤 순서로 진행할 것인지
+================================================================
+
+  1. (코드) Pattern01.cs 수정 : audioSource/Awake 제거, voiceClip/
+     voiceSource 추가, PlayVoice()/StopVoice() 추가, SpawnEnemies의
+     조건 교체, OnDisable에 StopVoice() 추가
+  2. (에디터) 컴파일 완료 후 Avoid.unity 열고 Pattern01 오브젝트의
+     Voice Clip 에 "적이 나타나서" 클립 지정
+  3. (에디터) 같은 오브젝트의 AudioSource 컴포넌트 제거
+  4. (검증 A - 통합 확인) VisualNovel.unity Play → 대본으로 startAvoid
+     실행 → 확인 항목 :
+     · 약 1초 뒤 음성 재생 시작
+     · Hierarchy 의 AudioManager > SFX 아래에 "SFX - [적이 나타나서]"
+       오브젝트가 생기고, 재생이 끝나면 사라진 뒤 다시 하나가 생기는지
+       (동시에 여러 개가 쌓이지 않는지)
+     · Window > Audio > Audio Mixer 에서 Voices 그룹 미터가 반응하는지
+       (Voice 그룹 볼륨을 임의로 내렸을 때 소리가 같이 작아지는지)
+  5. (검증 B - 정리 확인) 적 처치 또는 endAvoid 로 VN 복귀 → 음성이
+     즉시 멈추고 AudioManager > SFX 아래에 해당 오브젝트가 남지 않는지
+  6. (검증 C - 재진입) 다시 startAvoid 로 재진입해도 정상 재생/정리가
+     반복되는지 (참조가 꼬이지 않는지)
+  7. (검증 D - 단독 Play) Avoid.unity 만 단독 Play 했을 때 NullReference
+     Exception 없이 적 스폰이 정상 진행되는지 (소리는 안 나는 게 정상)
+  8. 이상 없으면 작업 기록(Assets/Docs/5. Record/)에 결과 남기고 이
+     문서를 3. ChangeCompleted 로 이동
+
+
+================================================================
+g. 어디가 어떤 식으로 변경되는지
+================================================================
+
+  [ 수정되는 파일 ]
+  - Assets/Scripts/Avoid/Core/Pattern01.cs
+      · 삭제 : AudioSource audioSource 필드, Awake() 메서드
+      · 추가 : AudioClip voiceClip(SerializeField), AudioSource
+        voiceSource, PlayVoice(), StopVoice()
+      · 변경 : SpawnEnemies() 안의 재생 체크 조건, OnDisable() 에
+        StopVoice() 추가
+  - Assets/Scenes/Avoid.unity
+      · Pattern01 오브젝트 : Pattern01 컴포넌트에 voiceClip 직렬화 필드
+        추가(클립 지정), AudioSource 컴포넌트 삭제
+
+  [ 변경 없음 ]
+  - AudioManager.cs / VisualNovel.unity — 기존 PlayVoice(AudioClip)
+    오버로드를 그대로 호출만 하므로 수정 불필요
+  - CMD_DatabaseExtension_Avoid.cs — 씬 전환 로직은 그대로. 음성 정리는
+    Pattern01.OnDisable 에서 처리하므로 여기에 추가할 것 없음
+  - Main.mixer — 믹서 구조/그룹은 손대지 않음
+  - Enemy/Fly/PlayerAttack 등 Avoid 나머지 스크립트 — 오디오와 무관
+
+
+================================================================
+h. 주의할 점
+================================================================
+
+  ■ ★ 정리 코드(OnDisable → StopVoice)가 핵심 : AudioManager의 SFX
+    오브젝트는 DontDestroyOnLoad 아래에 있어서 Avoid 씬이 내려가도
+    자동으로 안 사라짐. 이 정리 코드를 빼먹으면 VN에 돌아온 뒤에도
+    음성이 끝까지 재생됨 (로컬 AudioSource 시절엔 없던 새 문제)
+
+  ■ ★ voiceSource null 체크 순서 : 반드시 `voiceSource == null ||
+    voiceSource.isPlaying == false` (null 체크가 앞). AudioManager는
+    재생이 끝난 1초 뒤에 오브젝트를 파괴하므로 참조가 파괴된 뒤에
+    isPlaying 에 접근하면 MissingReferenceException 이 발생함
+
+  ■ Voice Clip 지정 누락 주의 : 필드를 추가하면 씬의 기존 Pattern01
+    에는 기본값(null)으로 들어감. 지정을 잊으면 코드상 조용히 재생을
+    건너뛰어서(voiceClip == null return) 에러 없이 "소리만 안 나는"
+    상태가 됨 → f의 2단계를 잊지 말 것. 그리고 반드시 AudioSource를
+    지우기 전에 클립부터 지정할 것
+
+  ■ AudioManager.instance == null 처리 : AudioManager는 VisualNovel.unity
+    안에만 있으므로 Avoid.unity 만 단독 Play 하면 instance가 null.
+    이 경우 재생을 조용히 건너뛰고 적 스폰은 정상 진행되어야 함(검증 D).
+    참고로 Avoid.unity 에는 AudioListener 가 없어서 단독 Play 시 어차피
+    소리는 안 났음 → 통합으로 인한 실질적 손실 없음. 단독 Play에서도
+    소리 확인이 필요해지면 그때 별도 결정 필요
+
+  ■ Voice 볼륨/믹서 확인 방법 : 통합 후 실제로 Voices 그룹을 거치는지는
+    Audio Mixer 창 미터로 눈으로 확인. voicesMixer 는 VisualNovel.unity
+    의 AudioManager 컴포넌트에서 Main.mixer 의 Voices 그룹에 연결되어
+    있음(파일 검색으로 확인). Main.mixer 에 볼륨 파라미터가 Expose
+    되어 있는지는 이번에 확인하지 않았으므로, 옵션 메뉴 볼륨 연동은
+    이번 범위 밖(믹서 그룹 경유까지만 보장)
+
+  ■ 재생 파라미터 차이 : 기존 로컬 소스는 Volume 1/Pitch 1/Loop 0 이고
+    PlayVoice 기본값도 volume 1/pitch 1/loop false 로 동일. 다만
+    AudioManager는 spatialBlend 를 0(2D)으로 강제하므로 소리 위치감이
+    없음 — 현재 로컬 소스의 3D 설정은 이번에 확인 안 했지만 Avoid
+    음성은 2D 가 맞다고 판단해 그대로 통합
+
+  ■ 이번 범위는 오디오 통합까지만 : Enemy.prefab 의 스크립트 누락,
+    이동 컨트롤러 플레이테스트, Avoid 효과음 신규 추가 등은 이 문서
+    범위 밖 (Record 26.09.19_00.36 "남은 것" 항목에서 별도 진행)
+
+  ■ 씬 파일(Avoid.unity)을 에디터 밖에서 YAML로 직접 수정할 경우
+    에디터를 닫거나 재로드 후 diff 확인 필요. 가능하면 에디터에서
+    직접 컴포넌트 편집을 권장
+
+================================================================

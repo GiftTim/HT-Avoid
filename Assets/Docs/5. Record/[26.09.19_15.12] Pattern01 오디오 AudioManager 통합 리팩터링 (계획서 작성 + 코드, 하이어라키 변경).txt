@@ -1,0 +1,148 @@
+================================================================
+작업 기록 : Pattern01 오디오 AudioManager 통합 리팩터링 (계획서 작성 + 코드/하이어라키 변경)
+작성일 : 2026-09-19 15:12 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  0. 세션 시작
+     - CLAUDE.md 규칙대로 가장 최근 Record([26.09.19_00.36] 이동
+       컨트롤러 개편 + 공격→VN 복귀 버그 수정 + 오디오 구조 논의)를
+       읽음. 그 기록의 "남은 것" 중 첫 항목인 Pattern01 오디오
+       리팩터링을 이번 세션 작업으로 진행
+     - 세션 시작 때 콘솔에 뜬 StyleHierarchy.cs CS0618 경고
+       (EditorUtility.InstanceIDToObject obsolete)는 Colourful
+       Hierarchy 플러그인의 deprecated API 경고로, 빌드/동작에는
+       영향 없음 (수정 안 함)
+
+  1. ChangePlan 작성 : Pattern01 오디오 AudioManager 통합 리팩터링
+     - 파일 : Assets/Docs/2. ChangePlan/[26.09.19_14.29] Pattern01
+       오디오 AudioManager 통합 리팩터링.txt (a~h 형식)
+     - 조사한 것 : Pattern01.cs, AudioManager.cs, Avoid.unity 의
+       Pattern01 오브젝트(AudioSource 설정), VisualNovel.unity 의
+       AudioManager 믹서 연결(music/sfx/voices 3개), CMD_
+       DatabaseExtension_Avoid.cs(씬 로드/언로드 흐름), Avoid 폴더
+       전체에서의 오디오 사용처(Pattern01 뿐)
+     - 문제점 3가지 정리 : (1) Voice 믹서 그룹 우회, (2) 오디오 재생
+       경로 이원화(VN=AudioManager / Avoid=로컬 AudioSource),
+       (3) 클립이 AudioSource 컴포넌트에 걸려 있어 코드만 봐서는
+       무슨 소리인지 알 수 없음
+     - 이전 Record 초안(PlayVoice("Audio/Voices/...") 문자열 경로)에서
+       바뀐 설계 결정 :
+       · 클립 지정 : 문자열 경로 대신 [SerializeField] AudioClip 사용.
+         PlayVoice(string)은 호출마다 Resources.Load 를 하는데 이
+         코드는 0.1초마다 재생 여부를 검사하므로, 경로 오타/파일명
+         변경(현재 한글 파일명) 시 LogError 가 쏟아질 수 있음
+       · 반복 재생 : loop:true 한 번 호출 대신 기존과 같은
+         "끝나면 다시 재생" 폴링 유지. loop 로 만든 SFX 오브젝트는
+         AudioManager 가 자동 삭제를 예약하지 않아, 정리 코드가 못
+         돌면 DontDestroyOnLoad 아래에 영구 잔류할 위험이 있음
+         (폴링 방식은 클립 길이 + 1초 뒤 자동 정리되는 fail-safe)
+       · 정지 : AudioManager.StopSoundEffect(이름) 대신 Pattern01 이
+         자기 소스 참조를 들고 OnDisable 에서 직접 Destroy
+     - 발견한 핵심 위험 : AudioManager 의 SFX 오브젝트는
+       DontDestroyOnLoad 이므로 Avoid 씬이 언로드되어도 안 사라짐.
+       OnDisable 정리 코드가 없으면 VN 복귀 후에도 음성이 끝까지
+       계속 들림 (로컬 AudioSource 시절엔 없던 새 문제)
+     - 또 다른 위험 : AudioManager 는 재생 종료 1초 뒤에 오브젝트를
+       파괴하므로 voiceSource 는 null 체크가 isPlaying 보다 먼저여야
+       함 (MissingReferenceException 방지)
+
+  2. 설계 확인 질의응답 : "VN AudioManager 를 메인으로 가는 거냐"
+     - 답 : 그렇다. 기존 AudioManager(클래스명은 VNAudioManager 가
+       아니라 그냥 AudioManager, Assets/Scripts/VisualNovel/Core/
+       Audio/)를 게임 전체의 유일한 오디오 창구로 쓰는 방향.
+       DontDestroyOnLoad 싱글톤 + Avoid 가 VN 위에 Additive 로 얹히는
+       구조라 성립
+     - 주의 : AudioManager 오브젝트가 VisualNovel.unity 안에만 있어서
+       Avoid 씬 단독 Play 시 AudioManager.instance == null. Avoid.unity
+       에는 AudioListener 도 없어 단독 Play 에선 원래 소리가 안 났음
+       → 코드에서 instance null 이면 조용히 건너뛰고 스폰은 계속
+     - 장기 옵션(이번 범위 밖) : Avoid 단독 테스트에서도 소리가 필요해
+       지면 AudioManager 를 부트스트랩 씬/프리팹으로 분리
+
+  3. 계획서 c절과 현재 상태 대조 후 변경 실행
+     - 대조 결과 : Pattern01.cs, Avoid.unity(Pattern01 오브젝트),
+       AudioManager.cs 모두 계획서와 동일 → 그대로 진행
+     - 계획서 h절의 미확인 항목 해소 : 기존 로컬 AudioSource 는
+       panLevelCustomCurve 값 0 (완전 2D). AudioManager 가 강제하는
+       spatialBlend 0 과 같아서 통합해도 소리 위치감 변화 없음
+     - 코드 변경 : Assets/Scripts/Avoid/Core/Pattern01.cs
+       · 제거 : AudioSource audioSource 필드, Awake()
+       · 추가 : [SerializeField] AudioClip voiceClip,
+         AudioSource voiceSource, PlayVoice(), StopVoice()
+       · 변경 : SpawnEnemies 의 재생 조건을
+         `voiceSource == null || voiceSource.isPlaying == false` 로,
+         OnDisable 에 StopVoice() 호출 추가
+     - 하이어라키 변경 : Assets/Scenes/Avoid.unity 의 Pattern01 오브젝트
+       · Pattern01 컴포넌트에 voiceClip = 적이 나타나서.mp3 지정
+         (기존 AudioSource 가 쓰던 것과 같은 클립)
+       · AudioSource 컴포넌트 삭제
+       · 씬 YAML 을 sed 로 직접 편집. git diff 상 +1/-98줄
+         (voiceClip 1줄 추가, AudioSource 블록 + m_Component 항목 삭제)
+         외 변경 없음. 삭제한 fileID(887357783)는 다른 곳에서 참조
+         없음 확인
+     - 변경 후 동작 흐름 / 변경 전후 코드 전문은
+       Assets/Docs/3. ChangeCompleted/[26.09.19_15.03] Pattern01 오디오
+       AudioManager 통합 리팩터링 완료.txt 에 정리
+
+  4. 계획서 파일명 시각 정정
+     - 문제 : 계획서를 처음 만들 때 Git Bash 의 `TZ=Asia/Seoul date`
+       가 KST 로 적용되지 않아 [26.09.19_05.26] 으로 9시간 빨리
+       찍혔음 (실제 파일 생성 시각 14:29)
+     - 조치 : 파일명/.meta/헤더 작성일을 [26.09.19_14.29] 로 정정.
+       이후 시각은 PowerShell Get-Date 로 확인하기로 하고 Claude
+       메모리(feedback_kst_timestamp)에도 기록함
+
+  5. 소스 제어 : 위 변경 전부를 main 에 커밋하고 origin/main 에 푸시
+     (이 Record 작성 직후 진행. 커밋 해시는 git log 참고)
+
+
+[현재 확정된 것 / 남은 것]
+
+  확정 : Pattern01 오디오가 AudioManager(Voices 믹서 그룹) 경유로
+         통합되도록 코드 + 씬 변경 완료, 계획서/완료 기록/작업 기록
+         작성 및 커밋·푸시
+
+  ★ 아직 검증 못 한 것 (다음 세션 최우선)
+    - 변경 시점에 Unity 에디터는 열려 있었지만 에디터 로그상 새
+      스크립트 컴파일이 아직 안 일어난 상태였음 → 컴파일 에러 여부와
+      실제 재생 동작 모두 미확인. 계획서 f절 4~7단계 :
+      · VisualNovel.unity Play → startAvoid → 약 1초 뒤 음성 재생,
+        Hierarchy 의 AudioManager > SFX 아래 "SFX - [적이 나타나서]"가
+        하나씩만 생기고 끝나면 사라진 뒤 다시 생기는지
+      · Window > Audio > Audio Mixer 에서 Voices 그룹 미터가 반응하는지
+      · 적 처치/[endAvoid] 로 VN 복귀 시 음성이 즉시 멈추고 SFX 아래
+        오브젝트가 남지 않는지, 재진입해도 동일한지
+      · Avoid.unity 단독 Play 에서 NullReferenceException 없이 스폰이
+        되는지
+    - Avoid.unity 를 YAML 로 직접 수정했으므로 에디터에서 "Scene has
+      been modified externally" 창이 뜨면 반드시 Reload (Ignore 후
+      저장하면 변경이 사라짐). 리로드 후 Pattern01 인스펙터의
+      Voice Clip 이 "적이 나타나서"로 채워져 있는지 확인, 비어 있으면
+      Assets/Resources/Audio/Voices/적이 나타나서.mp3 를 직접 지정
+
+  남은 것 (이전 Record 에서 이어짐):
+    - 위 4가지 검증 완료 후 2. ChangePlan 의 계획서를 3. ChangeCompleted
+      로 옮기거나 정리 (검증 전이라 이번엔 2. ChangePlan 에 둔 채 커밋)
+    - Main.mixer 에 볼륨 파라미터가 Expose 되어 있는지 확인 (옵션
+      메뉴 볼륨 연동은 이번 범위 밖, 믹서 그룹 경유까지만 보장)
+    - MovementRigidbody2D 새 이동감(가속/3단 중력) Play 모드
+      플레이테스트 (이전 세션부터 계속 미검증)
+    - (선택) Enemy.prefab 에 Enemy.cs/MovementTransform2D/
+      DestroyByPosition 붙이고 레이어를 Enemy(9)로 맞추기 — 실제로
+      쓸 계획이 생겼을 때
+    - 눈 맵 마찰(미끄러짐) 이펙트 계획은 메모리에 기록된 대로 별도 진행
+
+
+[참고 파일]
+  - Assets/Scripts/Avoid/Core/Pattern01.cs (수정)
+  - Assets/Scenes/Avoid.unity (Pattern01 오브젝트 수정)
+  - Assets/Scripts/VisualNovel/Core/Audio/AudioManager.cs (호출만, 수정 없음)
+  - Assets/Docs/2. ChangePlan/[26.09.19_14.29] Pattern01 오디오
+    AudioManager 통합 리팩터링.txt (계획서)
+  - Assets/Docs/3. ChangeCompleted/[26.09.19_15.03] Pattern01 오디오
+    AudioManager 통합 리팩터링 완료.txt (변경 전후 코드/흐름/주의점)
+  - Assets/Docs/5. Record/[26.09.19_00.36] ... .txt (이전 세션 기록)
+
+================================================================

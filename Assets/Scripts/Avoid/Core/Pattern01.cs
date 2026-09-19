@@ -8,12 +8,10 @@ public class Pattern01 : MonoBehaviour
 	[SerializeField]
 	private	float		spawnCycle;		// 생성 주기
 
-	private	AudioSource	audioSource;
+	[SerializeField]
+	private	AudioClip	voiceClip;		// 패턴 진행 중 반복 재생할 음성
 
-	private void Awake()
-	{
-		audioSource = GetComponent<AudioSource>();
-	}
+	private	AudioSource	voiceSource;	// AudioManager가 재생 중인 음성
 
 	private void OnEnable()
 	{
@@ -23,6 +21,7 @@ public class Pattern01 : MonoBehaviour
 	private void OnDisable()
 	{
 		StopCoroutine(nameof(SpawnEnemies));
+		StopVoice();
 	}
 
 	private IEnumerator SpawnEnemies()
@@ -34,9 +33,10 @@ public class Pattern01 : MonoBehaviour
 		while ( true )
 		{
 			// 음성 사운드는 재생이 종료되면 다시 재생
-			if ( audioSource.isPlaying == false )
+			// (재생이 끝나면 AudioManager가 오브젝트를 파괴하므로 null 체크가 먼저)
+			if ( voiceSource == null || voiceSource.isPlaying == false )
 			{
-				audioSource.Play();
+				PlayVoice();
 			}
 
 			Vector3 position = new Vector3(Random.Range(Constants.min.x, Constants.max.x), Constants.max.y, 0);
@@ -44,6 +44,22 @@ public class Pattern01 : MonoBehaviour
 
 			yield return new WaitForSeconds(spawnCycle);
 		}
+	}
+
+	private void PlayVoice()
+	{
+		if ( voiceClip == null || AudioManager.instance == null ) return;
+
+		voiceSource = AudioManager.instance.PlayVoice(voiceClip);
+	}
+
+	private void StopVoice()
+	{
+		if ( voiceSource != null )
+		{
+			Destroy(voiceSource.gameObject);
+		}
+		voiceSource = null;
 	}
 }
 

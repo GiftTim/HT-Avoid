@@ -1,0 +1,320 @@
+================================================================
+Pattern01 오디오 AudioManager 통합 리팩터링 완료
+작성일 : 2026-09-19 15:03 (KST)
+참고 : Assets/Docs/2. ChangePlan/[26.09.19_14.29] Pattern01 오디오
+      AudioManager 통합 리팩터링.txt (이 작업의 계획서)
+================================================================
+
+[목차]
+  1. 변경
+  2. 기록
+  3. 저장 / 주의할 점
+
+
+================================================================
+1. 변경
+================================================================
+
+  ■ 계획서 c절과 현재 상태 비교 (변경 착수 전)
+    - Pattern01.cs : 계획서 c절 내용과 동일 (audioSource 필드 +
+      Awake GetComponent + 반복 재생 조건)
+    - Avoid.unity 의 Pattern01 오브젝트(fileID 887357780) : 컴포넌트
+      3개(Transform/Pattern01/AudioSource), AudioSource.m_Resource =
+      적이 나타나서.mp3, 믹서 그룹 없음 → 계획서와 동일
+    - AudioManager.cs : PlayVoice(AudioClip ...) 오버로드, 재생 후
+      Destroy(clip.length/pitch + 1초), spatialBlend 0, voicesMixer 모두
+      계획서와 동일
+    - Avoid 쪽 스크립트에서 AudioSource/AudioManager 를 쓰는 곳은
+      Pattern01 뿐임 (재검색으로 재확인)
+    - git 워킹트리에 이 작업과 겹치는 다른 변경 없음
+    → 다른 점 없음, 계획서대로 변경 진행
+
+  ■ 계획서 h절의 미확인 항목 1건 해소
+    - 기존 로컬 AudioSource 의 3D 설정 : panLevelCustomCurve 값이 0
+      (= 완전 2D). AudioManager 가 강제하는 spatialBlend 0 과 동일하므로
+      통합해도 소리 위치감 변화 없음
+
+  ■ 변경한 것
+    1) Assets/Scripts/Avoid/Core/Pattern01.cs
+       - 로컬 AudioSource 참조/Awake 제거
+       - [SerializeField] AudioClip voiceClip, AudioSource voiceSource
+         추가
+       - PlayVoice()/StopVoice() 추가
+       - 반복 재생 조건을 voiceSource null 체크 포함으로 교체
+       - OnDisable 에서 StopVoice() 호출
+    2) Assets/Scenes/Avoid.unity (하이어라키, Pattern01 오브젝트)
+       - Pattern01 컴포넌트에 voiceClip = 적이 나타나서.mp3 지정
+         (기존 AudioSource 가 쓰던 것과 같은 클립, guid ef7fbd5d...)
+       - AudioSource 컴포넌트 삭제
+       - 에디터가 아니라 씬 YAML 을 직접 편집함 (에디터에는 씬이 열려
+         있었고 미저장 표시 없음 → 에디터에서 외부 변경 감지 시
+         Reload 선택 필요, 3절 참고)
+
+
+================================================================
+2. 기록
+================================================================
+
+  [ 변경 전 / 후 ]
+
+  ── Assets/Scripts/Avoid/Core/Pattern01.cs ──
+
+  변경 전:
+  ```csharp
+  using System.Collections;
+  using UnityEngine;
+
+  public class Pattern01 : MonoBehaviour
+  {
+  	[SerializeField]
+  	private	GameObject	enemyPrefab;	// 적 프리팹
+  	[SerializeField]
+  	private	float		spawnCycle;		// 생성 주기
+
+  	private	AudioSource	audioSource;
+
+  	private void Awake()
+  	{
+  		audioSource = GetComponent<AudioSource>();
+  	}
+
+  	private void OnEnable()
+  	{
+  		StartCoroutine(nameof(SpawnEnemies));
+  	}
+
+  	private void OnDisable()
+  	{
+  		StopCoroutine(nameof(SpawnEnemies));
+  	}
+
+  	private IEnumerator SpawnEnemies()
+  	{
+  		// 패턴 시작 전 잠시 대기하는 시간
+  		float waitTime = 1f;
+  		yield return new WaitForSeconds(waitTime);
+
+  		while ( true )
+  		{
+  			// 음성 사운드는 재생이 종료되면 다시 재생
+  			if ( audioSource.isPlaying == false )
+  			{
+  				audioSource.Play();
+  			}
+
+  			Vector3 position = new Vector3(Random.Range(Constants.min.x, Constants.max.x), Constants.max.y, 0);
+  			Instantiate(enemyPrefab, position, Quaternion.identity);
+
+  			yield return new WaitForSeconds(spawnCycle);
+  		}
+  	}
+  }
+  ```
+
+  변경 후:
+  ```csharp
+  using System.Collections;
+  using UnityEngine;
+
+  public class Pattern01 : MonoBehaviour
+  {
+  	[SerializeField]
+  	private	GameObject	enemyPrefab;	// 적 프리팹
+  	[SerializeField]
+  	private	float		spawnCycle;		// 생성 주기
+
+  	[SerializeField]
+  	private	AudioClip	voiceClip;		// 패턴 진행 중 반복 재생할 음성
+
+  	private	AudioSource	voiceSource;	// AudioManager가 재생 중인 음성
+
+  	private void OnEnable()
+  	{
+  		StartCoroutine(nameof(SpawnEnemies));
+  	}
+
+  	private void OnDisable()
+  	{
+  		StopCoroutine(nameof(SpawnEnemies));
+  		StopVoice();
+  	}
+
+  	private IEnumerator SpawnEnemies()
+  	{
+  		// 패턴 시작 전 잠시 대기하는 시간
+  		float waitTime = 1f;
+  		yield return new WaitForSeconds(waitTime);
+
+  		while ( true )
+  		{
+  			// 음성 사운드는 재생이 종료되면 다시 재생
+  			// (재생이 끝나면 AudioManager가 오브젝트를 파괴하므로 null 체크가 먼저)
+  			if ( voiceSource == null || voiceSource.isPlaying == false )
+  			{
+  				PlayVoice();
+  			}
+
+  			Vector3 position = new Vector3(Random.Range(Constants.min.x, Constants.max.x), Constants.max.y, 0);
+  			Instantiate(enemyPrefab, position, Quaternion.identity);
+
+  			yield return new WaitForSeconds(spawnCycle);
+  		}
+  	}
+
+  	private void PlayVoice()
+  	{
+  		if ( voiceClip == null || AudioManager.instance == null ) return;
+
+  		voiceSource = AudioManager.instance.PlayVoice(voiceClip);
+  	}
+
+  	private void StopVoice()
+  	{
+  		if ( voiceSource != null )
+  		{
+  			Destroy(voiceSource.gameObject);
+  		}
+  		voiceSource = null;
+  	}
+  }
+  ```
+
+  ── Assets/Scenes/Avoid.unity (Pattern01 오브젝트, YAML) ──
+
+  변경 전:
+  ```yaml
+  --- !u!1 &887357780
+  GameObject:
+    m_Component:
+    - component: {fileID: 887357782}   # Transform
+    - component: {fileID: 887357781}   # Pattern01
+    - component: {fileID: 887357783}   # AudioSource
+    m_Name: Pattern01
+  --- !u!114 &887357781
+  MonoBehaviour:
+    m_EditorClassIdentifier: Assembly-CSharp::Pattern01
+    enemyPrefab: {fileID: 5638796592799647332, guid: 02900b6065f298a4d8aedb87bd19f203, type: 3}
+    spawnCycle: 0.1
+  --- !u!82 &887357783
+  AudioSource:
+    OutputAudioMixerGroup: {fileID: 0}
+    m_Resource: {fileID: 8300000, guid: ef7fbd5d4e12fb04880950476f4139d4, type: 3}
+    m_PlayOnAwake: 0
+    m_Volume: 1
+    m_Pitch: 1
+    Loop: 0
+    ... (약 97줄, 커브 설정 포함)
+  ```
+
+  변경 후:
+  ```yaml
+  --- !u!1 &887357780
+  GameObject:
+    m_Component:
+    - component: {fileID: 887357782}   # Transform
+    - component: {fileID: 887357781}   # Pattern01
+    m_Name: Pattern01
+  --- !u!114 &887357781
+  MonoBehaviour:
+    m_EditorClassIdentifier: Assembly-CSharp::Pattern01
+    enemyPrefab: {fileID: 5638796592799647332, guid: 02900b6065f298a4d8aedb87bd19f203, type: 3}
+    spawnCycle: 0.1
+    voiceClip: {fileID: 8300000, guid: ef7fbd5d4e12fb04880950476f4139d4, type: 3}
+  (AudioSource 블록 &887357783 전체 삭제, 다른 곳에서의 참조 없음 확인)
+  ```
+  git diff 로 확인 : Avoid.unity 는 +1줄 / -98줄 (voiceClip 1줄 추가,
+  AudioSource 블록과 m_Component 항목 삭제) 외에 다른 변경 없음
+
+
+  [ 변경 후 동작 흐름 ]
+
+  1. Avoid 씬이 Additive 로드되면 Pattern01 이 OnEnable 되면서
+     SpawnEnemies 코루틴 시작 (VN 씬과 AudioManager 는 그대로 살아있음)
+  2. 1초 대기 후 while 루프 진입. 매 spawnCycle(0.1초)마다:
+     a. voiceSource 가 null(첫 진입이거나 AudioManager가 이미 파괴함)
+        이거나 isPlaying == false(재생 끝, 파괴 대기 1초 구간) 이면
+        PlayVoice() 호출
+     b. PlayVoice() : voiceClip 이 비었거나 AudioManager.instance 가
+        null 이면 조용히 건너뜀. 아니면
+        AudioManager.instance.PlayVoice(voiceClip) 호출 → AudioManager
+        가 "SFX - [적이 나타나서]" 오브젝트를 sfxRoot 아래에 만들어
+        voicesMixer 그룹으로 2D 재생하고, (클립 길이 + 1초) 뒤 자동
+        삭제 예약 → 반환된 AudioSource 를 voiceSource 에 저장
+     c. 화면 위쪽 랜덤 x 좌표에 enemyPrefab 스폰
+  3. 클립 재생이 끝나면 다음 틱에서 2-a 조건이 참이 되어 새 소스로
+     자동 반복 재생 (기존 "끝나면 다시 재생" 동작과 동일)
+  4. Enemy 처치/[endAvoid] 로 ReturnToVN 이 실행되어 Avoid 씬이
+     언로드되면 Pattern01.OnDisable 호출 → 코루틴 중지 +
+     StopVoice() 가 재생 중인 SFX 오브젝트를 즉시 Destroy →
+     VN 으로 돌아온 뒤 음성이 남지 않음
+  5. 다음 Avoid 재진입 시 voiceSource 는 새 인스턴스에서 null 부터
+     다시 시작하므로 이전 재생과 꼬이지 않음
+  6. Avoid 씬만 단독 Play 하는 경우 AudioManager.instance == null →
+     음성만 건너뛰고 스폰은 정상 진행 (Avoid 씬에는 원래 AudioListener
+     가 없어서 이전에도 단독 Play 시엔 소리가 안 났음)
+
+
+================================================================
+3. 저장 / 주의할 점
+================================================================
+
+  ■ ★ 이번 세션에서는 컴파일/Play 모드 검증을 하지 못함
+    - 변경 시점에 Unity 에디터가 열려 있었지만(제목: "HT-Avoid - Avoid
+      - Windows, Mac, Linux - Unity 6.3 LTS") 에디터 로그상 새 스크립트
+      컴파일이 아직 일어나지 않았음(에디터 창 포커스 시 컴파일됨).
+      따라서 컴파일 에러 여부와 실제 재생 동작은 아직 미확인
+    - 계획서 f절 4~7단계(통합 확인/정리 확인/재진입/단독 Play)의
+      검증이 남아있음. 검증 방법 :
+      · VisualNovel.unity Play → startAvoid → 약 1초 뒤 음성 재생,
+        Hierarchy 의 AudioManager > SFX 아래 "SFX - [적이 나타나서]"가
+        하나씩만 생기고 끝나면 사라진 뒤 다시 생기는지
+      · Window > Audio > Audio Mixer 에서 Voices 그룹 미터가 반응하는지
+      · 적 처치로 VN 복귀 시 음성이 즉시 멈추고 SFX 아래 오브젝트가
+        남지 않는지, 재진입해도 동일한지
+      · Avoid.unity 단독 Play 에서 NullReferenceException 없이 스폰이
+        되는지
+
+  ■ ★ 에디터에서 "Scene has been modified externally" 창이 뜨면
+    반드시 Reload 선택 (Ignore 후 저장 금지)
+    - Avoid.unity 를 YAML 로 직접 수정했으므로, Ignore 하고 씬을 저장하면
+      에디터 메모리의 옛 상태(AudioSource 있음, voiceClip 없음)로 덮어써져
+      이번 변경이 사라짐
+    - 씬이 컴파일 완료 전에 리로드되면 voiceClip 필드가 잠시 인식되지
+      않을 수 있음. 이 경우 스크립트 컴파일이 끝난 뒤 Pattern01
+      인스펙터에서 Voice Clip 이 "적이 나타나서"로 채워져 있는지 확인하고,
+      비어 있으면 Assets/Resources/Audio/Voices/적이 나타나서.mp3 를
+      직접 드래그해서 지정
+
+  ■ Voice Clip 이 비어 있으면 에러 없이 소리만 안 남
+    (PlayVoice 의 voiceClip == null 방어). 소리가 안 나면 가장 먼저
+    Pattern01 인스펙터의 Voice Clip 필드를 확인
+
+  ■ StopVoice 의 Destroy 는 AudioManager 의 SFX 오브젝트를 직접 지움 :
+    AudioManager 의 SFX 는 DontDestroyOnLoad 아래에 있어서 이 정리
+    코드가 없으면 Avoid 씬이 내려가도 음성이 끝까지 계속 들림
+    (로컬 AudioSource 시절엔 없던 문제라 OnDisable 정리는 필수)
+
+  ■ voiceSource 는 null 체크가 먼저 : AudioManager 가 재생 종료 1초
+    뒤 오브젝트를 파괴하므로 그 뒤에 isPlaying 에 먼저 접근하면
+    MissingReferenceException 발생
+
+  ■ 볼륨 연동 범위 : 이번엔 voicesMixer 그룹을 "경유"하는 것까지만
+    보장. Main.mixer 에 볼륨 파라미터가 Expose 되어 있는지는 확인하지
+    않았으므로 옵션 메뉴 볼륨 조절 연동은 별도 작업
+
+  ■ 파일명 시각 정정 (기록용) : 계획서를 처음 만들 때 Git Bash 의
+    `TZ=Asia/Seoul date` 가 KST 로 적용되지 않아 파일명/헤더가
+    [26.09.19_05.26] 으로 9시간 빨리 찍혔음. 실제 작성 시각(파일 생성
+    시각 14:29)에 맞춰 "[26.09.19_14.29] Pattern01 오디오 AudioManager
+    통합 리팩터링.txt" 로 파일명과 .meta, 헤더 작성일을 정정함.
+    이후 KST 시각은 PowerShell Get-Date 로 확인할 것
+
+  ■ 이번 범위 밖(그대로 남음) : Enemy.prefab 의 스크립트 누락,
+    이동 컨트롤러(가속/3단 중력) Play 모드 플레이테스트, Avoid 효과음
+    신규 추가
+
+  ■ 계획서 처리 : 검증(위 4가지)이 끝나면 2. ChangePlan 의 계획서를
+    3. ChangeCompleted 로 옮기거나 정리할 것 (이번엔 검증 전이라 아직
+    2. ChangePlan 에 그대로 둠)
+
+================================================================
