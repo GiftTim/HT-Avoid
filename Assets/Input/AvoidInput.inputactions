@@ -49,7 +49,7 @@
                 {
                     "name": "negative",
                     "id": "582b5e19-4a72-4430-af4f-ad7bbbbbb85f",
-                    "path": "<Keyboard>/a",
+                    "path": "<Keyboard>/leftArrow",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -60,7 +60,7 @@
                 {
                     "name": "positive",
                     "id": "6034b220-1f23-4454-942c-ad644a86c9c9",
-                    "path": "<Keyboard>/d",
+                    "path": "<Keyboard>/rightArrow",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -71,7 +71,7 @@
                 {
                     "name": "",
                     "id": "2cfe8834-f0dd-41be-bd42-012a15ccbb33",
-                    "path": "<Keyboard>/space",
+                    "path": "<Keyboard>/leftAlt",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -82,7 +82,7 @@
                 {
                     "name": "",
                     "id": "529ff40f-e20f-4c6c-8025-34f87c6e3a62",
-                    "path": "<Mouse>/leftButton",
+                    "path": "<Keyboard>/leftCtrl",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
