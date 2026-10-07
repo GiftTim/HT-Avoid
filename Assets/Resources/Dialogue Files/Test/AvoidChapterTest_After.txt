@@ -1,0 +1,22 @@
+narrator "무사히 도착했다."
+
+if ($Avoid.hitCount == 0)
+{
+    narrator "한 번도 맞지 않았다. 완벽하다!"
+}
+else
+{
+    narrator "몇 번 맞았지만 끝내 도착했다."
+}
+
+choice "이제 어떻게 할까?"
+{
+    -손을 내밀어 인사한다
+        narrator "상대가 웃으며 동료가 되었다."
+    -무기를 뽑는다
+        narrator "상대가 화를 낸다. 다시 도전해야 한다!"
+        [wait]startAvoid(Stage1)
+        [wait]restartDialogue()
+}
+
+narrator "정답! 다음 챕터로 간다."

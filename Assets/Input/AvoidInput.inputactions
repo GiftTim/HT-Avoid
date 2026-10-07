@@ -25,13 +25,13 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "Attack",
+                    "name": "Forward",
                     "type": "Button",
-                    "id": "276d667d-d8f8-4765-98ca-3db9a06937b4",
-                    "expectedControlType": "Button",
+                    "id": "3b9e5a71-c2d4-4f86-9a10-7e4d2b6c8f53",
+                    "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
-                    "initialStateCheck": false
+                    "initialStateCheck": true
                 }
             ],
             "bindings": [
@@ -69,9 +69,53 @@
                     "isPartOfComposite": true
                 },
                 {
+                    "name": "1D Axis",
+                    "id": "7a3e1c52-9b46-4f0d-8e21-5c6d0a94b317",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Move",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "b1f4d6a8-2c75-4e39-a0b3-6e8f17c942d5",
+                    "path": "<Gamepad>/dpad/left",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Move",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "e59c20b7-64da-4813-9f7e-03ab5d81c6f4",
+                    "path": "<Gamepad>/dpad/right",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Move",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
                     "name": "",
-                    "id": "2cfe8834-f0dd-41be-bd42-012a15ccbb33",
-                    "path": "<Keyboard>/leftAlt",
+                    "id": "4d82f9e3-17a6-4b5c-b8d0-92e7c36a1f08",
+                    "path": "<Gamepad>/leftStick/x",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Move",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "c06b7d15-8e94-4a2f-9163-d5f2b08e7a49",
+                    "path": "<Gamepad>/buttonSouth",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -81,12 +125,45 @@
                 },
                 {
                     "name": "",
-                    "id": "529ff40f-e20f-4c6c-8025-34f87c6e3a62",
-                    "path": "<Keyboard>/leftCtrl",
+                    "id": "2cfe8834-f0dd-41be-bd42-012a15ccbb33",
+                    "path": "<Keyboard>/space",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Attack",
+                    "action": "Jump",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "8a1d4c96-5e23-4b7f-a6c9-1f0e3d5b7a24",
+                    "path": "<Keyboard>/upArrow",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Forward",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "d7f2b0e4-9c18-4a65-8b3d-6a5c9e1f2d07",
+                    "path": "<Gamepad>/dpad/up",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Forward",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "f4c6a9d2-0b37-4e81-9d5a-2e8b7c1a6f39",
+                    "path": "<Gamepad>/leftStick/up",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Forward",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

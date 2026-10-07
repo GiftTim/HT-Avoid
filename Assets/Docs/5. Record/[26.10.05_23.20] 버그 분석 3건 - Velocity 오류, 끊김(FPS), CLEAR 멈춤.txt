@@ -1,0 +1,91 @@
+================================================================
+작업 기록 : 버그 분석 3건 — Velocity 오류 / 달릴 때 끊김(FPS) / CLEAR 에서 멈춤
+작성일 : 2026-10-05 23:20 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  코드 수정 없음. 분석 문서 작성과 원인 조사만 함 (모두 "수정 전" 상태).
+
+  1. ChangePlan 작성 : 가속 연출 (캐릭터 주변 바람 줄기)
+     - 이미 PlayerSpeedAura.cs 가 Player 에 부착돼 있었음 (SpeedEffect.cs
+       는 씬 미연결). Play 로 확인된 기록은 없음
+  2. BugAnalysis 작성 : Particle Velocity curves must all be in the same
+     mode (26.10.04 16:41 문서)
+  3. 달릴 때 끊김 조사 (문서 없음 — 아래 참고)
+  4. BugAnalysis 작성 : CLEAR 에서 멈추고 VN 으로 복귀하지 않음
+     (26.10.05 20:54 문서)
+
+
+[문서 위치]
+
+  2. ChangePlan
+    - [26.10.03_22.50] 가속 연출 - 캐릭터 주변 바람 줄기 이펙트.txt
+  4. BugAnalysis
+    - [26.10.04_16.41] Particle Velocity curves must all be in the same
+      mode 오류 분석.txt
+    - [26.10.05_20.54] 피하기 CLEAR 에서 멈추고 VN 으로 복귀하지 않음
+      분석.txt
+    - (이미 있던 것) [26.10.05_17.41] 변수 Avoid.hitCount 를 찾을 수
+      없음 분석.txt
+
+
+[결과 / 현재 상태]
+
+  ■ A. Velocity 오류 (미수정, 원인은 추정)
+    - PlayerSpeedAura.cs / SpeedEffect.cs 에서 velocityOverLifetime 을
+      enabled = true 로 먼저 켠 뒤 x/y/z 를 하나씩 대입하는 순서가 의심됨
+    - 수정안 : x/y/z 를 MinMaxCurve 로 모두 지정한 "뒤"에 enabled
+    - 스택트레이스로 발생 위치는 아직 확인 못 함
+
+  ■ B. 달릴 때 끊김 (원인 미확정)
+    - Stats : 32 FPS (CPU main 31.3ms / render thread 8.3ms),
+      Batches 84, Tris 1.0k → 렌더링 부하가 아니라 CPU 메인 스레드 쪽
+    - 에디터에서 읽은 monoUsedBytes 가 약 1.19GB (비정상적으로 큼, 에디터
+      자체 메모리 포함 가능 — 원인으로 단정 못 함)
+    - Profiler Timeline 스크린샷으로는 Scene 뷰와 Game 뷰가 둘 다 렌더링
+      되는 것까지만 확인. 어느 스크립트가 시간을 쓰는지는 못 봄
+    - 코드상 후보 : 전진 키를 떼면 속도가 즉시 0 이 되는 구조(속도의
+      순간 변화), 기둥 Instantiate/Destroy 반복(풀링 없음), 격자 무늬
+      앨리어싱
+    - 사용자 증상은 "(b) 프레임이 끊기는 느낌" 으로 답함
+
+  ■ C. CLEAR 에서 멈춤 (원인 추정 완료, 미수정)
+    - 로그 순서 : 진입 11:52:19 → hitCount 오류 11:52:47(클리어 전) →
+      클리어 11:53:21 → 복귀 없음
+    - 원인 : ConversationManager.LINE_RunCommands 의 [wait] 대기 루프가
+      userPrompt(다음 신호)가 오면 실행 중 명령을 Kill 함
+      → 피하기 도중 신호가 들어가면 StartAvoid 코루틴이 죽음 →
+      VN 이 After 대본으로 먼저 진행(변수 오류) → 클리어해도
+      ReturnToVN 이 호출되지 않음
+    - 수정안 : AvoidSession.IsRunning 추가, 피하기 중에는 건너뛰기
+      신호로 명령을 죽이지 않음, startAvoid 진입 시 남은 신호 비움
+    - 신호가 어디서 들어왔는지(UI 클릭 / 남은 userPrompt / 설정창)는
+      미확인 → 수정 전에 userPrompt = true 지점(ConversationManager
+      48행)에 임시 로그로 확인할 계획
+
+
+[내일 이어서 할 것 — 우선순위 순]
+
+  1. C (CLEAR 멈춤) 수정 — 가장 막힘이 큼. 분석 문서 f절 순서대로
+     · 먼저 임시 로그로 userPrompt 발생원 확인
+     · 피하기 도중 눌렀던 입력(Space/Enter/마우스)을 사용자에게 확인
+     · VN 엔진 본체(ConversationManager)를 대기 루프 한 곳만 수정
+  2. A (Velocity 오류) 수정 — 두 파일의 대입 순서 변경, 스택트레이스로
+     발생 위치 먼저 확인
+  3. B (끊김) : Profiler 를 Hierarchy 로 놓고 Time ms 상위 항목 확인,
+     Maximize On Play 와 Avoid.unity 단독 Play 로 FPS 비교.
+     코드상 의심 후보(전진 속도 가감속 보간, 기둥 풀링)는 원인 확인 뒤에
+  4. 가속 연출은 Play 로 b절 완료 조건 (1)~(5) 확인
+
+  이전 Record 에서 이어지는 것
+    - 3-b / 3-c 의 ChangePlan → ChangeCompleted 이동은 아직 안 함
+      (확인 후 일괄)
+    - hitCount 오류의 EnsureVariables 수정은 C 와 별개로 유효 (미적용)
+
+
+[참고]
+  - 환경 메모 : 사용자 에디터에서 Play 중 프레임이 낮으면(포커스 상실 등)
+    에디터 MCP 의 exec 요청이 메인 스레드 타임아웃으로 실패하기도 함
+
+================================================================

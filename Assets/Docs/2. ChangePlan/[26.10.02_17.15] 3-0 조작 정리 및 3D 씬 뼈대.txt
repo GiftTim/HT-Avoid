@@ -1,0 +1,247 @@
+================================================================
+3-0 조작 정리 및 3D 씬 뼈대 (일주일 일정 1일차)
+작성일 : 2026-10-02 17:15 (KST)
+================================================================
+
+[목차]
+  a. 목차
+  b. 요구한 기능
+  c. 현재 상황 및 코드
+  d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+  e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+  f. 어떤 순서로 진행할 것인지
+  g. 어디가 어떤 식으로 변경되는지
+  h. 주의할 점
+
+
+================================================================
+b. 요구한 기능
+================================================================
+
+  로드맵 i절 일주일 일정의 1일차(10.02) 분량.
+
+  1. 3-0 조작 정리 : 공격/조준 제거, 게임패드 바인딩 병행, 26.09.21
+     추가 코드(PlayerHP/GameController/UIController) 정리
+  2. 3D 씬 뼈대 : 원근 카메라, 바닥 스크롤, 플레이어 좌우 이동 + 점프
+
+  [ 이번 세션(26.10.02)에 확정된 것 ]
+  - 유사 3D 구현 방법 : 실제 3D 공간 + 원근 카메라 + 세워둔 2D
+    스프라이트 (잠정 → 확정)
+  - 좌우 이동 : 자유 이동 (레인 단위 아님)
+
+  [ 진행 전 확인 사항 ]
+  - 대상 씬 : Assets/Scenes/Avoid.unity
+  - 참고 계획 : Assets/Docs/1. Plan/ 게임 기획 및 개발 로드맵.txt
+                (g절 1번, i절 3-0 / 일주일 일정)
+
+  완료 조건 : Avoid.unity 단독 Play 에서 (1) 바닥이 플레이어 쪽으로
+  흘러오고 (2) 방향키 좌우로 한계 안에서 움직이며 (3) Alt 로 점프했다
+  착지하고 (4) 콘솔에 에러가 없을 것. VisualNovel → [startAvoid] 진입
+  에서도 같은 화면이 VN 위에 덮여 나올 것
+
+  범위 밖 (2일차 이후) : 다가오는 공격 오브젝트, 충돌/피격 반응,
+  타이머·거리 UI, 클리어/재도전, VN 복귀 트리거 교체
+
+
+================================================================
+c. 현재 상황 및 코드
+================================================================
+
+  ※ 이번 세션에서 실제 파일을 읽어 확인한 내용
+
+  [ AvoidInput.inputactions ]
+  - Move = 1D Axis (방향키 좌/우), Jump = leftAlt, Attack = leftCtrl
+    → 로드맵 g절의 "현재 구현 : A/D, Space, 마우스 왼쪽" 은 낡은 내용.
+      키보드 바인딩은 26.09.27 에 이미 바뀌어 있었음
+  - 게임패드 바인딩 없음, Attack 액션이 남아 있음
+
+  [ Avoid.unity ]
+  - Camera-Main : orthographic = 1
+  - Player 컴포넌트 : MovementRigidbody2D / PlayerAttack /
+    AvoidPlayerController / PlayerInput (+ 자식 Body, Gun 1)
+  - Outline 오브젝트에 RespawnZone (MovementRigidbody2D.Teleport 호출)
+  - Pattern01 오브젝트 (Fly 를 화면 위에서 스폰하는 2D 패턴)
+  - GameController 라는 빈 오브젝트는 있으나 GameController.cs /
+    UIController.cs / PlayerHP.cs / AimCursor.cs 는 씬에 연결돼 있지
+    않음 (스크립트 guid 가 씬 파일에 없음)
+
+  [ 코드 ]
+  - AvoidPlayerController : RequireComponent(MovementRigidbody2D),
+    FixedUpdate 에서 Move 폴링, Jump started/canceled 로 롱 점프 처리,
+    OnTriggerEnter2D 에서 PlayerHP 피해 → GameController.GameOver
+  - MovementRigidbody2D : Rigidbody2D 중력 기반 옆시점 이동 (폐기 대상)
+  - PlayerAttack : Awake 에서 input.actions["Attack"] 를 찾음 →
+    Attack 액션을 먼저 지우면 여기서 예외가 남
+  - GameController / UIController : "버틴 시간 = 점수" 구조. 미연결
+
+
+================================================================
+d. 요구한 기능을 만들기 위해서 어떤 식으로 생성하거나 변경해야 하는지
+================================================================
+
+  ■ 좌표 규칙 (이후 단계도 이 기준을 따름)
+    - X = 좌우, Y = 높이(점프), Z = 깊이. 플레이어는 Z = 0 고정
+    - 공격/장식은 +Z 먼 곳에서 생성돼 -Z 쪽으로 이동 (2일차)
+    - 바닥은 Y = 0
+
+  ■ 신규 스크립트 (작성 완료 — 씬 연결 전이라 기존 동작에 영향 없음)
+    1) AvoidPlayerMovement.cs
+       - Transform 직접 이동. MoveTo(x) / JumpTo() / IsJumping
+       - 좌우 : moveSpeed 로 이동, ±limitX 로 Clamp
+       - 점프 : 높이 = jumpHeight * 4 * t * (1 - t) 포물선,
+         jumpDuration 동안. 공중 재점프 없음. 착지 높이는 시작 y
+    2) GroundScroller.cs
+       - 바닥 Renderer 머티리얼의 mainTextureOffset.y 를 매 프레임 감소
+       - SpeedScale 공개 (2일차 피격 멈춤/넉백 때 바닥 흐름 조절용)
+
+  ■ 입력 (AvoidInput.inputactions)
+    - 추가 완료 : Move ← 게임패드 십자키 좌/우 + 왼쪽 스틱 X,
+      Jump ← 게임패드 buttonSouth
+    - 남은 것 : Attack 액션 + leftCtrl 바인딩 삭제
+      (씬에서 PlayerAttack 을 뗀 뒤에 삭제 — h절)
+
+  ■ 기존 스크립트 수정 (씬 작업과 같이 해야 하는 것 — 아직 안 함)
+    - AvoidPlayerController
+      · RequireComponent / 필드를 MovementRigidbody2D →
+        AvoidPlayerMovement 로 교체
+      · Move 폴링을 FixedUpdate → Update 로 (물리를 안 쓰므로)
+      · IsLongJump, OnJumpCanceled 삭제 (점프 높이 고정)
+      · PlayerHP, GameController 필드와 OnTriggerEnter2D 삭제
+        (피격은 2일차에 3D 트리거 + 시간 손실로 새로 작성)
+
+  ■ 씬 작업 (Unity 에디터, Avoid.unity)
+    1) Camera-Main : Projection = Perspective, FOV 60,
+       Position (0, 3, -6), Rotation (15, 0, 0).
+       Clear Flags/Depth(VN 카메라보다 위)는 지금 값 유지
+    2) 바닥 : 3D Object > Plane, Position (0, 0, 20), Scale (1, 1, 5)
+       → 폭 10 x 길이 50. 줄무늬/격자 텍스처를 넣은 URP Lit(또는
+       Unlit) 머티리얼, Tiling (2, 10). GroundScroller 부착.
+       텍스처 Wrap Mode = Repeat
+    3) Player : Position (0, 0.5, 0) 근처 (발이 바닥에 닿게).
+       · 제거 : PlayerAttack, MovementRigidbody2D, Rigidbody2D,
+         Collider2D, 자식 Gun 1 / AttackEffect
+       · 추가 : AvoidPlayerMovement
+       · 스프라이트(Body)는 그대로 세워둠 (카메라를 정면으로 봄)
+    4) 2D 전용 오브젝트 비활성화 : Ground(2D), Outline(RespawnZone),
+       Pattern01, Enemies, Background — 삭제하지 말고 끄기만
+       (2일차에 3D 용으로 교체하면서 정리)
+    5) Directional Light 가 없으면 추가 (Lit 머티리얼을 쓸 경우)
+
+  ■ 26.09.21 추가 코드
+    - PlayerHP.cs : 손대지 않음, 씬에 연결하지 않음
+    - GameController.cs / UIController.cs : 이번에는 컴파일 확인만.
+      3일차(3-c)에 타이머/거리용으로 개조
+
+
+================================================================
+e. 다른 방법들 중에서 왜 d의 방식으로 만든 것인지
+================================================================
+
+  [ 플레이어 이동 : Rigidbody(3D 물리) vs Transform 직접 이동 ]
+  - Rigidbody + 중력 : 바닥 콜라이더, 접지 판정, 중력 튜닝이 다시
+    필요. 26.09.19 에 2D 에서 겪은 "붕 뜨는 느낌" 조정을 3D 에서 반복
+  - Transform 직접 (채택) : 플레이어가 X/Y 두 축만 정해진 범위 안에서
+    움직이고 지형이 평면 하나뿐이라 물리가 할 일이 없음. 점프는
+    포물선 수식 한 줄로 높이/체공 시간을 인스펙터에서 바로 조절 가능.
+    충돌은 2일차에 isKinematic Rigidbody + Trigger 로 충분
+
+  [ 점프 : 눌러서 높이 조절(롱 점프) vs 고정 높이 ]
+  - 고정 (채택) : 점프의 용도가 "바닥으로 오는 공격 넘기" 하나라
+    높이 조절이 필요 없고, 체공 시간이 일정해야 패턴 설계가 쉬움
+
+  [ 바닥 전진 연출 : 바닥 타일을 실제로 이동/재배치 vs UV 스크롤 ]
+  - UV 스크롤 (채택) : 오브젝트 하나, 코드 몇 줄. 로드맵 g절에서 이미
+    정한 방식. 길가 장식(나무 등)은 2일차의 "다가오는 오브젝트" 와
+    같은 방식으로 따로 흘려보내면 됨
+
+  [ 기존 씬 개조 vs 새 씬(Avoid3D) ]
+  - 기존 Avoid.unity 개조 (채택) : [startAvoid] 가 "Avoid" 씬 이름을
+    쓰고 있고 카메라 Depth/Clear Flags, PlayerInput 설정이 이미 맞춰져
+    있음. 2D 오브젝트는 끄기만 해서 되돌릴 수 있게 함
+
+  [ Attack 제거 : 스크립트 파일 삭제 vs 씬에서 컴포넌트만 제거 ]
+  - 컴포넌트만 제거 (채택) : PlayerAttack.cs / AimCursor.cs /
+    MovementRigidbody2D.cs / RespawnZone.cs 파일은 일단 남김. 2D 프리팹
+    (Fly/Enemy)이 아직 참조할 수 있어 Missing Script 를 만들지 않기
+    위함. 파일 삭제는 3단계가 끝난 뒤 한꺼번에
+
+
+================================================================
+f. 어떤 순서로 진행할 것인지
+================================================================
+
+  1. (완료) AvoidPlayerMovement.cs / GroundScroller.cs 작성,
+     게임패드 바인딩 추가
+  2. (에디터) Unity 로 돌아가 컴파일 에러가 없는지 확인
+     — 26.09.21 추가 코드 컴파일 확인도 여기서 같이 끝남
+  3. (에디터) d절 씬 작업 3) 중 Player 에서 PlayerAttack 제거
+  4. (코드) AvoidInput 에서 Attack 액션/바인딩 삭제,
+     AvoidPlayerController 를 AvoidPlayerMovement 용으로 수정
+  5. (에디터) d절 씬 작업 나머지 : 카메라, 바닥 + GroundScroller,
+     Player 컴포넌트 교체, 2D 오브젝트 비활성화
+  6. (검증) Avoid.unity 단독 Play : 바닥 흐름 / 좌우 한계 / 점프 /
+     콘솔 에러 없음. 게임패드가 있으면 십자키·스틱·A 버튼도 확인
+  7. (검증) VisualNovel.unity Play → [startAvoid] → 같은 화면이 VN 을
+     가리고 나오는지
+  8. (튜닝) 카메라 위치/각도, moveSpeed, limitX, jumpHeight,
+     jumpDuration, scrollSpeed 를 보면서 조정
+  9. Record 작성, 이 문서를 3. ChangeCompleted 로 이동
+
+
+================================================================
+g. 어디가 어떤 식으로 변경되는지
+================================================================
+
+  [ 새로 생긴 파일 ]
+  - Assets/Scripts/Avoid/Core/AvoidPlayerMovement.cs
+  - Assets/Scripts/Avoid/Core/GroundScroller.cs
+  - (에디터에서 생성) 바닥 머티리얼 + 바닥 텍스처
+
+  [ 수정되는 파일 ]
+  - Assets/Input/AvoidInput.inputactions
+      · 추가(완료) : 게임패드 Move/Jump 바인딩
+      · 삭제(예정) : Attack 액션, leftCtrl 바인딩
+  - Assets/Scripts/Avoid/Core/AvoidPlayerController.cs (예정)
+  - Assets/Scenes/Avoid.unity (에디터 작업)
+
+  [ 변경 없음 ]
+  - VN 엔진 전체, CMD_DatabaseExtension_Avoid.cs
+  - PlayerHP / GameController / UIController / Enemy / Pattern01 /
+    MovementRigidbody2D / PlayerAttack / AimCursor / RespawnZone
+    (파일은 그대로, 씬에서만 떼거나 끔)
+
+
+================================================================
+h. 주의할 점
+================================================================
+
+  ■ ★ 순서 : PlayerAttack 을 씬에서 떼기 전에 Attack 액션을 지우면
+    PlayerAttack.Awake 의 input.actions["Attack"] 에서 예외가 남.
+    마찬가지로 AvoidPlayerController 를 먼저 고치면 Player 에
+    AvoidPlayerMovement 가 없어 NullReferenceException. 그래서 f절
+    3 → 4 → 5 순서로 코드와 씬 작업을 묶어서 진행
+
+  ■ RequireComponent : AvoidPlayerController 가 MovementRigidbody2D 를
+    요구하는 동안에는 에디터가 그 컴포넌트 제거를 막음 → 컨트롤러
+    코드를 먼저 고친 뒤(f-4) 컴포넌트를 교체(f-5)
+
+  ■ 바닥 텍스처 : Wrap Mode 가 Clamp 면 스크롤이 안 보임. 단색
+    머티리얼도 흐르는 게 안 보이므로 줄무늬/격자 텍스처가 필요
+
+  ■ 스프라이트와 원근 카메라 : SpriteRenderer 는 3D 공간에서도 그대로
+    보이지만 Sorting Layer/Order 가 깊이보다 우선함. 2일차에 다가오는
+    오브젝트를 넣을 때 모두 같은 Sorting Layer/Order 로 두고
+    Z 거리로 정렬되게 할 것 (URP 2D Renderer 가 아닌 Universal
+    Renderer 인지도 그때 확인)
+
+  ■ 애디티브 로딩 : VN 씬과 같이 떠 있을 때 Directional Light 를
+    추가하면 VN 쪽 3D 오브젝트(Model3D 캐릭터)에도 빛이 닿을 수 있음.
+    바닥을 Unlit 머티리얼로 하면 라이트 자체가 필요 없음 (권장)
+
+  ■ Constants.min/max (2D 화면 경계) 는 새 이동에서 쓰지 않음.
+    DestroyByPosition 등 2D 코드가 아직 참조하므로 그대로 둠
+
+  ■ 수치(FOV, 카메라 위치, 속도, 점프)는 전부 출발점일 뿐이고
+    f-8 에서 화면을 보며 조정
+
+================================================================

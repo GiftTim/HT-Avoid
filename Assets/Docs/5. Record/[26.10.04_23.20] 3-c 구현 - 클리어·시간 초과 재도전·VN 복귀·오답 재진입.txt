@@ -1,0 +1,76 @@
+================================================================
+작업 기록 : 3-c 구현 — 클리어 / 시간 초과 재도전 / VN 복귀 / 오답 재진입
+작성일 : 2026-10-04 23:20 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  일정표 4일차(10.04) 분량인 3-c 를 착수 → 구현 → Play 로 부분 확인까지
+  끝냄. 상세는 ChangePlan [26.10.04_21.19] 3-c ... 의 i절.
+
+  1. 착수 전 확인 : 에디터 컴파일 정상, 콘솔 에러 0 (오래된 Particle
+     Velocity 에러만 로그 버퍼에 남아 있었음). 3-c ChangePlan 작성
+  2. 코드 : AvoidSession(신규), GameController, UIController,
+     CMD_DatabaseExtension_Avoid, Enemy 수정
+  3. 대본 : Test/AvoidChapterTest.txt + AvoidChapterTest_After.txt (신규)
+  4. VN 씬 테스트 진입(TestSystem.fileToRead)을 위 대본으로 변경
+  5. 로드맵 갱신 : [26.10.04_23.17] (변경 이력/c절/h절/3-c 상태)
+
+
+[이번에 내린 결정과 이유]
+
+  1. startAvoid 가 클리어할 때까지 기다림 (대본이 선형이 됨)
+  2. 시간 초과 재도전 = 씬 다시 로드 (상태 되감기보다 확실)
+  3. 오답 재진입 = [wait]startAvoid() + [wait]restartDialogue() 두 줄.
+     "대화를 처음부터"의 기준은 대본 파일 하나이므로, 클리어 후 대화는
+     도입부와 별도 파일로 분리하고 load(-f ...) 로 이어 붙임
+  4. 결과 변수는 $Avoid.hitCount / retryCount / remainingTime / cleared
+  5. 클리어/시간 초과 문구는 영문 임시 텍스트 (TMP 기본 폰트가 한글
+     미지원)
+
+
+[Play 로 확인한 것]
+  시간 초과 재시작 / 도착 → VN 복귀 + 변수 기록 + 조건문 분기 /
+  오답 → 재진입 → 대화 처음부터 + retryCount 초기화 / 정답 진행.
+  새 콘솔 에러 없음.
+
+
+[추가 결정 (같은 날 늦은 시간)]
+
+  - 시간 초과 재시작은 프로토타입용. 나중에 컵헤드식(진행률 + 남은
+    패턴 수) 화면을 붙일 구현 예정 디테일 (로드맵 g절에 기록, 보류
+    아이디어 아님)
+  - 전체 일정(10.08 완성)은 유지. "VN → 피하기 → VN" 한 판 뼈대가
+    돌아가므로 이후는 디테일 단계
+  - 10.05 목표 : UI + 1스테이지. UI 는 VN 쪽 설정창을 기본으로 하고
+    피하기에서도 Esc/Start 로 호출(설정창 하나를 VN 씬에 두고 공유).
+    순서 : 설정창 → 피하기 일시정지 연동 → 1스테이지
+    → ChangePlan [26.10.04_23.40] 작성함 (설정창 항목, 패턴 종류/개수,
+    1챕터 컨셉은 미정이라 착수 때 확정)
+  - 로드맵을 [26.10.04_23.41] 로 갱신 (일정표에 위 변경 반영)
+
+[남은 것 — 다음 세션]
+
+  ★ 사람이 직접 한 번 플레이해서 확인 (자동화 한계로 못 한 것)
+    - 실제 키 입력으로 VN → 피하기 → VN 을 끝까지 (복귀 뒤 Space 로
+      대사가 넘어가는지 특히)
+    - CLEAR!/TIME OVER 문구가 보이는지
+  - 안 쓰는 스크립트 정리 결정 (PlayerAttack/AimCursor/PlayerHP/
+    MovementRigidbody2D/Enemy 등)
+  - 일정 5일차(10.05) : 3-a 스테이지 프로필(ScriptableObject) + 공격
+    패턴 3~4종. startAvoid 의 스테이지명 인자를 여기서 사용
+  - 미정 : 스토리(동화 선정 등), 피격 수치, 가속 때문에 여유로워진
+    제한시간/거리 조정, 중첩 선택지에서의 restartDialogue
+  - 정리 : 1·2·3일차 ChangePlan([26.10.02_17.15], [26.10.02_20.12],
+    [26.10.03_22.50])과 이번 3-c ChangePlan 을 3. ChangeCompleted 로
+    옮길지 (사람이 확인한 뒤)
+
+
+[참고 파일]
+  - Assets/Docs/2. ChangePlan/[26.10.04_21.19] 3-c ....txt (i절 결과)
+  - Assets/Docs/1. Plan/[26.10.04_23.17] 게임 기획 및 개발 로드맵.txt
+  - Assets/Scripts/Avoid/Core/AvoidSession.cs, GameController.cs
+  - Assets/Scripts/VisualNovel/Core/Commands/Database/Extensions/
+    CMD_DatabaseExtension_Avoid.cs
+
+================================================================

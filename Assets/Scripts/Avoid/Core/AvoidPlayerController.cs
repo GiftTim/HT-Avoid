@@ -4,85 +4,73 @@ using UnityEngine.InputSystem;
 namespace AVOID
 {
 	/// <summary>
-	/// AvoidInput(Input Actions)에서 읽은 입력을 MovementRigidbody2D의
-	/// 공개 API(MoveTo/JumpTo/IsLongJump)로 넘겨주는 연결 컴포넌트.
-	/// 또한 Obstacle 태그와 닿으면 PlayerHP에 피해를 주고, 사망하면 GameController에 알린다.
+	/// AvoidInput(Input Actions)에서 읽은 입력을 AvoidPlayerMovement의
+	/// 공개 API(MoveTo/JumpTo)로 넘겨주는 연결 컴포넌트.
+	/// 전진(Forward) 입력은 GameController 에 넘긴다.
 	/// </summary>
 	[RequireComponent(typeof(PlayerInput))]
-	[RequireComponent(typeof(MovementRigidbody2D))]
+	[RequireComponent(typeof(AvoidPlayerMovement))]
 	public class AvoidPlayerController : MonoBehaviour
 	{
-		// CompareTag는 TagManager에 등록되지 않은 태그를 쓰면 예외가 나므로,
-		// 태그를 만들기 전에도 안전하도록 문자열 비교를 쓴다
-		private const string OBSTACLE_TAG = "Obstacle";
-
-		[SerializeField]
-		private GameController		gameController;	// 사망 시 GameOver 호출 (없으면 로그만 출력)
-
 		private PlayerInput			input;
-		private MovementRigidbody2D	movement;
-		private PlayerHP			playerHP;		// 없으면 피격 판정을 건너뜀
+		private AvoidPlayerMovement	movement;
 
 		private InputAction			moveAction;
 		private InputAction			jumpAction;
+		private InputAction			forwardAction;
 
 		private void Awake()
 		{
 			input		= GetComponent<PlayerInput>();
-			movement	= GetComponent<MovementRigidbody2D>();
-			playerHP	= GetComponent<PlayerHP>();
+			movement	= GetComponent<AvoidPlayerMovement>();
 
 			moveAction	= input.actions["Move"];
 			jumpAction	= input.actions["Jump"];
+			forwardAction = input.actions["Forward"];
 		}
 
 		private void OnEnable()
 		{
 			jumpAction.started		+= OnJumpStarted;
-			jumpAction.canceled	+= OnJumpCanceled;
 		}
 
 		private void OnDisable()
 		{
 			jumpAction.started		-= OnJumpStarted;
-			jumpAction.canceled	-= OnJumpCanceled;
 		}
 
-		private void FixedUpdate()
+		private void Update()
 		{
 			// Move는 키를 누르고 있는 동안 계속 값이 필요하므로
-			// 이벤트 콜백이 아니라 매 FixedUpdate마다 값을 폴링해서 읽는다.
-			float x = moveAction.ReadValue<float>();
+			// 이벤트 콜백이 아니라 매 프레임 값을 폴링해서 읽는다.
+			// 피격 반응(멈춤/넉백) 중에는 좌우로 움직일 수 없고, 공중이었다면 바로 떨어진다
+			// 설정창이 열려 있는 동안(일시정지)에는 입력을 전부 무시한다
+			bool isPaused = SettingsPanel.IsOpen;
+
+			float x = ( IsReacting || isPaused ) ? 0 : moveAction.ReadValue<float>();
 			movement.MoveTo(x);
+
+			if ( IsReacting )
+			{
+				movement.Fall();
+			}
+
+			// 앞 방향키를 누르고 있는 동안에만 전진한다
+			if ( GameController.Instance != null )
+			{
+				GameController.Instance.IsAdvancing = isPaused == false && forwardAction.IsPressed();
+			}
 		}
 
-		// 점프 버튼을 누른 순간: 점프 시작 + 롱 점프 판정 시작
+		// 점프 버튼을 누른 순간: 점프 시작 (높이는 고정)
 		private void OnJumpStarted(InputAction.CallbackContext context)
 		{
-			movement.IsLongJump = true;
+			if ( IsReacting || SettingsPanel.IsOpen ) return;
+
 			movement.JumpTo();
 		}
 
-		// 점프 버튼을 뗀 순간: 롱 점프 판정 종료 (이후 중력이 높은 값으로 전환됨)
-		private void OnJumpCanceled(InputAction.CallbackContext context)
-		{
-			movement.IsLongJump = false;
-		}
-
-		private void OnTriggerEnter2D(Collider2D collision)
-		{
-			if ( playerHP == null || collision.tag != OBSTACLE_TAG ) return;
-
-			bool isDie = playerHP.TakeDamage();
-			if ( isDie == true )
-			{
-				Debug.Log("플레이어 사망");
-
-				if ( gameController != null )
-				{
-					gameController.GameOver();
-				}
-			}
-		}
+		// GameController 가 없는 씬(테스트용)에서는 항상 조작 가능
+		private bool IsReacting => GameController.Instance != null && GameController.Instance.IsReacting;
 	}
 }

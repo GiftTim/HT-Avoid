@@ -27,6 +27,8 @@ namespace DIALOGUE
         // DeactivateInput()은 액션만 끄고 디바이스 페어링은 유지되어, 뒤이어
         // 켜지는 다른 PlayerInput(Avoid)이 같은 키보드/마우스를 페어링하지
         // 못하는 문제가 있었음 → 컴포넌트 자체를 껐다 켜서 페어링까지 해제/재획득
+        public bool IsInputEnabled => input != null && input.enabled;
+
         public void SetInputEnabled(bool isEnabled)
         {
             input.enabled = isEnabled;
