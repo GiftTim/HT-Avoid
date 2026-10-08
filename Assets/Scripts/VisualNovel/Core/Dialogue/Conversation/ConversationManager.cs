@@ -26,6 +26,7 @@ namespace DIALOGUE
         private ConversationQueue conversationQueue;
 
         public bool allowUserPrompts = true;
+        public bool isWaitingOnUserInput { get; private set; } = false;   // 대사가 끝나 입력을 기다리는 중 (계속 진행 프롬프트 표시 조건)
 
         public ConversationManager(TextArchitect architect)
         {
@@ -44,7 +45,9 @@ namespace DIALOGUE
 
         private void onUserPrompt_Next()
         {
-            if(allowUserPrompts)
+            // 로직 줄(선택지/입력창 등)을 기다리는 중의 입력은 받지 않는다.
+            // 받아두면 선택지를 Space/Enter 로 확정했을 때 다음 대사가 곧바로 빨리 넘어간다
+            if(allowUserPrompts && !isOnLogicalLine)
                 userPrompt = true;
         }
 
@@ -67,6 +70,7 @@ namespace DIALOGUE
 
             dialogueSystem.StopCoroutine(process);
             process = null;
+            isOnLogicalLine = false;    // 로직 줄 도중에 끊기면 true 로 남아 이후 입력이 막힌다
         }
 
         IEnumerator RunningConversation()
@@ -325,11 +329,13 @@ namespace DIALOGUE
 
         IEnumerator WaitForUserInput()
         {
+            isWaitingOnUserInput = true;
             dialogueSystem.prompt.Show();
 
             while (!userPrompt)
                 yield return null;
 
+            isWaitingOnUserInput = false;
             dialogueSystem.prompt.Hide();
 
             userPrompt = false;

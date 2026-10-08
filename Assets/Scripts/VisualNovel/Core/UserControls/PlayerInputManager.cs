@@ -3,6 +3,7 @@ using System;
 using History;
 using System.Collections.Generic;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
 
 namespace DIALOGUE
 {
@@ -21,6 +22,32 @@ namespace DIALOGUE
             input = GetComponent<PlayerInput>();
 
             InitializeActions();
+        }
+
+        void Start()
+        {
+            DisableMouse();
+        }
+
+        // 조작은 키보드/게임패드 전용. 커서를 숨기고 UI 가 마우스(가리키기/클릭/휠)에
+        // 반응하지 않게 한다. 방향키/확인/취소 내비게이션(move/submit/cancel)은 그대로 둔다
+        private void DisableMouse()
+        {
+            Cursor.visible = false;
+#if !UNITY_EDITOR
+            // 에디터에서는 잠그면 Play 중 인스펙터를 만질 때마다 Esc(설정창 열기와 겹침)를 눌러야 해서 빌드에서만 잠근다
+            Cursor.lockState = CursorLockMode.Locked;
+#endif
+
+            InputSystemUIInputModule uiModule = FindFirstObjectByType<InputSystemUIInputModule>();
+            if (uiModule == null)
+                return;
+
+            uiModule.point = null;
+            uiModule.leftClick = null;
+            uiModule.middleClick = null;
+            uiModule.rightClick = null;
+            uiModule.scrollWheel = null;
         }
 
         // Avoid 등 다른 씬이 애디티브로 얹혀 키보드/마우스를 받아야 할 때 끔.

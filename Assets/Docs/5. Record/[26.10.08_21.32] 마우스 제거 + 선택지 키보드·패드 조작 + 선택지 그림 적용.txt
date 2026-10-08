@@ -1,0 +1,69 @@
+================================================================
+작업 기록 : 마우스 제거, 선택지 키보드/패드 조작, 선택지 그림 적용
+작성일 : 2026-10-08 21:32 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  26.10.07 Record 의 "지금 고민 중 (먼저 진행)" 2건을 구현함.
+  계획은 2. ChangePlan 의 [26.10.08_11.53] 문서 참고 (구현 후 3. ChangeCompleted 로 이동).
+  Play 확인(완료 조건 1~5)은 사용자가 진행.
+
+  1. 마우스 제거
+     - PlayerInputManager.Start() -> DisableMouse()
+       · Cursor.visible = false (빌드에서만 lockState = Locked)
+       · InputSystemUIInputModule 의 point/leftClick/middleClick/rightClick/
+         scrollWheel 을 null 로. move/submit/cancel 은 유지
+     - AimCursor.cs / PlayerAttack.cs (+ .meta) 삭제
+
+  2. 선택지 키보드/패드 조작 (ChoicePanel)
+     - 위/아래 Explicit 내비게이션 (끝에서 반대쪽 끝으로 순환), 첫 항목 자동 선택
+     - 확정 : Enter/패드 A 는 EventSystem Submit, Space 는 Update 에서 직접 처리
+     - 선택이 풀리면(설정창 닫은 직후 등) 마지막 선택으로 복구, Hide 시 해제
+     - 설정창이 열려 있는 동안은 선택/Space 확정을 하지 않음
+
+  3. 선택지 그림 적용 (당초 계획의 "색 변화" 대신 그림 교체로 진행)
+     - 새 그림 : Resources/Graphics/UI/Dialogue/Choice_List.png(평소),
+       Choice_Selected.png(선택), Choice.aseprite(원본)
+     - 선택 중이면 Choice_Selected + 1.08배 확대, 나머지는 Choice_List
+     - 버튼 Transition = None (색 대신 그림 교체), 높이 패딩 70 -> 10
+     - 계획서의 "선택 색 노란색" 은 쓰지 않게 됨
+
+  4. Next 입력이 선택지 뒤 대사로 새는 문제 수정 (ConversationManager)
+     - onUserPrompt_Next 에서 isOnLogicalLine 이면 무시
+     - 로직 줄 도중 끊기면 isOnLogicalLine 이 true 로 남아 입력이 막히던 문제도 같이 처리(리셋)
+
+  5. 계속 진행 프롬프트(DialogueContinuePrompt) 정리
+     - ConversationManager.isWaitingOnUserInput 추가 : 대사가 끝나 입력을
+       기다리는 동안에만 프롬프트 표시
+     - 기본은 숨김(Awake 에서 Hide), 선택지가 떠 있는 동안도 숨김
+     - 위치는 씬에 배치한 그대로 둠. 마지막 글자 뒤로 따라붙던 이전 방식은
+       주석으로 보관
+
+  6. 그 외 변경 (확인용)
+     - VisualNovel.unity 수정 (선택지/프롬프트 배치로 추정, 약 107줄)
+     - UniversalRenderPipelineGlobalSettings.asset, packages-lock.json,
+       EditorBuildSettings.asset, ProjectSettings.asset 도 변경돼 있음 —
+       에디터가 자동으로 건드린 것으로 보이며 의도한 변경인지 커밋 전 확인 필요
+
+
+[남은 확인 / 미정]
+
+  - Play 확인 : 마우스 커서 숨김, 선택지 조작/구분/Space 확정 후 대사 안 빨라짐,
+    선택지 도중 설정창 열고 닫기
+  - 로그(히스토리) 창 : 마우스 휠을 껐으므로 키보드/패드로 스크롤할 방법 필요
+  - 이름 입력창(InputPanel) : 게임패드로는 글자 입력 불가 — 콘솔 대응 시
+    이름 입력을 뺄지 가상 키보드를 쓸지 결정
+  - 설정창을 씬에 직접 배치할지(지금은 코드가 만드는 임시 UI), HUD 수정 범위
+  - 선택지 그림의 저작권 해소 여부 (직접 제작한 그림인지 확인)
+  - 3-b / 3-c / 설정창 ChangePlan 의 3. ChangeCompleted 이동
+
+
+[다음 : 작은 디테일 점검 (사용자 예정)]
+
+  26.10.07 Record 순서대로
+  1. VN 과 피하기 사이 로딩창 (헬테이커 참고)
+  2. 패배 후 "어느 정도 길이에서 패배했는지" 표시 (컵헤드 참고)
+  그 다음 본 작업 : 음악 -> 캐릭터 디자인 -> 보스 패턴
+
+================================================================

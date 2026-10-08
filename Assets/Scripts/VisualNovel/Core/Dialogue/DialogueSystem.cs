@@ -96,7 +96,9 @@ namespace DIALOGUE
 
         public void OnStopViewingHistory()
         {
-            prompt.Show();
+            // 대사가 끝나 입력을 기다리는 중일 때만 다시 보인다
+            if (conversationManager.isWaitingOnUserInput && !(ChoicePanel.instance != null && ChoicePanel.instance.isWaitingOnUserChoice))
+                prompt.Show();
             autoReader.allowToggle = true;
             conversationManager.allowUserPrompts = true;
         }
