@@ -64,8 +64,10 @@ namespace DIALOGUE
         private void InitializeActions()
         {
             actions.Add((input.actions["Next"], OnNext));
+            /*
             actions.Add((input.actions["HistoryBack"], OnHistoryBack));
             actions.Add((input.actions["HistoryForward"], OnHistoryForward));
+            */
             actions.Add((input.actions["HistoryLogs"], OnHistoryToggleLog));
         }
 
@@ -87,6 +89,10 @@ namespace DIALOGUE
 
         public void OnNext(InputAction.CallbackContext context)
         {
+            // 히스토리 로그를 보는 중에는 대사를 진행하지 않는다
+            if (HistoryManager.instance.logManager.isOpen)
+                return;
+
             DialogueSystem.instance.OnUserPrompt_Next();
         }
          public void OnHistoryBack(InputAction.CallbackContext context)

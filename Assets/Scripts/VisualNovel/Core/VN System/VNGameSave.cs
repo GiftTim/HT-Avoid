@@ -13,8 +13,6 @@ namespace VISUALNOVEL
 
         public const string FILE_TYPE = ".vns";
         public const string SCREENSHOT_FILE_TYPE = ".jpg";
-        public const bool ENCRYPT_FILES = true;
-        private const string ENCRYPTION_PASSWORD = "HT-Avoid_SaveKey"; // TODO: 추후 빌드 시점 주입 등으로 교체 검토 (h절 참고)
 
         public string filePath => $"{FilePaths.gameSaves}{slotNumber}{FILE_TYPE}";
         public string screenshotPath => $"{FilePaths.gameSaves}{slotNumber}{SCREENSHOT_FILE_TYPE}";
@@ -35,19 +33,12 @@ namespace VISUALNOVEL
             activeConversations = GetConversationData();
             variables = GetVariableData();
 
-            ES3.Save<VNGameSave>("gameSave", this, filePath, GetSettings());
+            ES3.Save<VNGameSave>("gameSave", this, filePath);
         }
 
         public static VNGameSave LoadFromDisk(string path)
         {
-            return ES3.Load<VNGameSave>("gameSave", path, GetSettings());
-        }
-
-        private static ES3Settings GetSettings()
-        {
-            return ENCRYPT_FILES
-                ? new ES3Settings(ES3.EncryptionType.AES, ENCRYPTION_PASSWORD)
-                : new ES3Settings();
+            return ES3.Load<VNGameSave>("gameSave", path);
         }
 
         public void Load()

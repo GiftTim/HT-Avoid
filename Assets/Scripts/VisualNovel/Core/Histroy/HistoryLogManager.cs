@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace History
@@ -28,6 +29,64 @@ namespace History
         [SerializeField] private Slider logScaleSlider;
 
         private float textScaling => logScaling * 3f;
+
+        private const float TAP_SCROLL_STEP = 0.3f;     // 한 번 누를 때 화면(뷰포트) 높이의 몇 배만큼 스크롤할지
+        private const float HOLD_REPEAT_DELAY = 0.4f;   // 꾹 누를 때 반복이 시작되기까지의 시간
+        private const float HOLD_REPEAT_INTERVAL = 0.08f;
+
+        private ScrollRect scrollRect;
+        private float nextRepeatTime = 0f;
+
+        // 마우스 없이 위/아래 방향키(또는 패드 D-Pad)로 로그를 스크롤한다
+        // 한 번 누르면 조금씩, 꾹 누르면 반복해서 내려간다
+        private void Update()
+        {
+            if (!isOpen)
+                return;
+
+            float dir = 0f;
+            bool pressed = false;
+            bool held = false;
+            if (Keyboard.current != null)
+            {
+                var up = Keyboard.current.upArrowKey;
+                var down = Keyboard.current.downArrowKey;
+                pressed |= up.wasPressedThisFrame || down.wasPressedThisFrame;
+                held |= up.isPressed || down.isPressed;
+                if (up.isPressed) dir += 1f;
+                if (down.isPressed) dir -= 1f;
+            }
+            if (Gamepad.current != null)
+            {
+                var dpad = Gamepad.current.dpad;
+                pressed |= dpad.up.wasPressedThisFrame || dpad.down.wasPressedThisFrame;
+                held |= dpad.up.isPressed || dpad.down.isPressed;
+                if (dpad.up.isPressed) dir += 1f;
+                if (dpad.down.isPressed) dir -= 1f;
+            }
+
+            if (Mathf.Approximately(dir, 0f))
+                return;
+
+            if (pressed)
+                nextRepeatTime = Time.unscaledTime + HOLD_REPEAT_DELAY;
+            else if (held && Time.unscaledTime >= nextRepeatTime)
+                nextRepeatTime = Time.unscaledTime + HOLD_REPEAT_INTERVAL;
+            else
+                return;
+
+            if (scrollRect == null)
+                scrollRect = logPrefab.GetComponentInParent<ScrollRect>();
+            if (scrollRect == null || scrollRect.content == null || scrollRect.viewport == null)
+                return;
+
+            float range = scrollRect.content.rect.height - scrollRect.viewport.rect.height;
+            if (range <= 0f)
+                return;
+
+            float step = TAP_SCROLL_STEP * scrollRect.viewport.rect.height / range;
+            scrollRect.verticalNormalizedPosition = Mathf.Clamp01(scrollRect.verticalNormalizedPosition + dir * step);
+        }
 
         public void Open()
         {

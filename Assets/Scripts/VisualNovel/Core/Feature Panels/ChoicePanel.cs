@@ -32,6 +32,7 @@ public class ChoicePanel : MonoBehaviour
     public  ChoicePanelDecision lastDecision { get; private set; } = null;
     public bool isWaitingOnUserChoice { get; private set; } = false;
     private GameObject selectedButton = null;   // 마지막으로 선택돼 있던 선택지
+    private bool blockedByLog = false;          // 히스토리 로그가 열려 있어서 선택지를 잠가 둔 상태
     private Sprite normalSprite, selectedSprite;
 
     private void Awake()
@@ -54,8 +55,18 @@ public class ChoicePanel : MonoBehaviour
     {
         UpdateSelectionVisuals();
 
+        // 히스토리 로그를 보는 동안에는 선택지 이동/확정을 막는다
+        bool logOpen = History.HistoryManager.instance.logManager.isOpen;
+        if (isWaitingOnUserChoice && logOpen != blockedByLog)
+        {
+            blockedByLog = logOpen;
+            cg.SetInteractableState(active: !logOpen);
+        }
+        if (logOpen)
+            return;
+
         // UI 모듈의 Submit 은 Enter/패드 A 뿐이라 Space 는 직접 처리한다
-        if (isWaitingOnUserChoice && selectedButton != null && !SettingsPanel.IsOpen
+        if (isWaitingOnUserChoice && selectedButton != null && !SettingsPanel.IsOpen && !History.HistoryManager.instance.logManager.isOpen
             && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
         {
             selectedButton.GetComponent<Button>()?.onClick.Invoke();
@@ -100,6 +111,7 @@ public class ChoicePanel : MonoBehaviour
 
         isWaitingOnUserChoice = true;
         selectedButton = null;
+        blockedByLog = false;
 
         // 선택지가 떠 있는 동안 계속 진행 프롬프트는 숨긴다
         DIALOGUE.DialogueSystem.instance.prompt.Hide();
