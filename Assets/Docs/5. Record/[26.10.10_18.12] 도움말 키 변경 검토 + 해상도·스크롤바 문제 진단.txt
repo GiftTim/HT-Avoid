@@ -1,0 +1,58 @@
+================================================================
+작업 기록 : 도움말(Help) 키 변경 검토, 해상도 깨짐/스크롤바 핸들 문제 진단
+작성일 : 2026-10-10 18:12 (KST)
+================================================================
+
+[오늘 한 일 요약]
+
+  코드 변경은 최종적으로 남기지 않음. 아래 3건은 검토/진단 위주였고,
+  시도한 수정은 모두 원상 복구함. 씬(VisualNovel.unity)과 설정창 그림은
+  사용자가 에디터에서 직접 작업한 분량이 같이 커밋됨.
+
+  1. Help 에서 조작 키 변경 (보류 - 되돌림)
+     - Input System 의 PerformInteractiveRebinding 방식으로 구현했다가 되돌림
+       · KeyRebindPanel.cs / KeyBindingStore.cs 신규 작성 후 삭제
+       · AvoidPlayerController / PlayerInputManager 의 Load 호출 추가 후 제거
+     - 다시 구현할 때 참고할 설계
+       · 입력 에셋 : Assets/Input/AvoidInput(Move/Jump/Forward),
+         VisualNovelInput(Next/HistoryLogs). 액션 이름은 그대로 두고
+         바인딩만 오버라이드
+       · Move 는 1DAxis Composite -> negative/positive 파트별로 인덱스 지정
+       · 저장 : SaveBindingOverridesAsJson -> PlayerPrefs, 각 PlayerInput 의
+         Awake 에서 LoadBindingOverridesFromJson
+       · 리바인딩 중 액션 Disable, UI 내비게이션(sendNavigationEvents) 끄기,
+         Esc 로 취소, 중복 키는 서로 맞바꿈
+       · Next 는 Space/Enter 두 바인딩 -> Space 만 변경 대상
+
+  2. FullHD 가 아닌 해상도에서 UI 가 깨지는 문제 (원인 확인, 미수정)
+     - Canvas-Overlay(Menus/Pages 가 속한 캔버스)의 Canvas Scaler 가
+       Constant Pixel Size. Canvas-Main 만 Scale With Screen Size 1920x1080
+     - 해결 : Canvas-Overlay 를 Scale With Screen Size / 1920x1080 /
+       Match 0.5 로 변경 (사용자가 에디터에서 적용)
+     - 16:9 가 아닌 화면은 고정 좌표 대신 앵커 기준 배치 필요
+
+  3. 스크롤 내릴 게 없는데 핸들이 남고 맨 아래에 붙는 문제 (원인 확인, 되돌림)
+     - Scroll Rect 4개 모두 이미 Auto Hide And Expand Viewport 로 설정됨
+     - 원인 : AudioPanel 의 Content 높이(657.18)가 Scroll View 높이(657.17)
+       보다 0.01 커서 스크롤이 필요하다고 판단됨. Content 에 Content Size
+       Fitter 없음 (자식 4개 x 높이 100 = 400)
+     - 씬에서 Content 높이를 400 으로 바꿨다가 요청에 따라 657.18 로 복구함
+       -> 지금도 증상은 그대로. 적용하려면 Content 높이를 Viewport 보다 작게
+       하거나 Content Size Fitter(Vertical Fit = Preferred Size) 추가
+     - Scrollbar Direction : 세로 Scroll Rect 에는 Bottom To Top 이 맞음
+       (Top To Bottom 은 핸들 방향이 내용과 반대가 됨)
+
+  4. 커밋에 같이 포함된 사용자 작업 (확인용)
+     - VisualNovel.unity : Help/Pages/AudioPanel 등 메뉴 UI 작업분 (대량 변경)
+     - Resources/Graphics/UI/Setting/ : Arrow, Decor_LeftLine, Decor_TopLine,
+       UI_List, UI_Selected 그림 신규
+     - TextMesh Pro LiberationSans SDF - Fallback.asset : 동적 아틀라스
+       글리프 테이블이 에디터에 의해 자동 변경됨 (의도한 변경 아님)
+
+
+[남은 확인 / 미정]
+
+  - Help 에서 키 변경 기능을 넣을지 (넣는다면 키보드만/게임패드까지, VN 포함 여부)
+  - Canvas-Overlay Canvas Scaler 변경 후 여러 해상도에서 Pages 확인
+  - AudioPanel 스크롤 핸들 문제 해결 방식 결정 (Content 높이 / Size Fitter)
+  - Help 의 조작 설명 텍스트를 현재 키 설정에 맞춰 자동 갱신할지
