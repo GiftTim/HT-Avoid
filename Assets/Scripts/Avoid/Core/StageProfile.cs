@@ -37,6 +37,10 @@ namespace AVOID
 		public	float	timeLimit		= 60;		// 제한시간 (초)
 		public	float	goalDistance	= 600;		// 목적지까지의 거리
 
+		// 직접 배치한 맵 (PatternMarker 들을 자식으로 둔 프리팹). 지정하면 patterns 목록 대신 이 맵을 쓴다
+		public	GameObject			mapPrefab;
+
+		// 옛 방식의 숫자 목록. mapPrefab 도 씬의 PatternMarker 도 없을 때만 쓰인다
 		public	List<PatternEntry>	patterns = new List<PatternEntry>();
 
 		public int PatternCount => patterns.Count;

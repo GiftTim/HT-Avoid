@@ -8,7 +8,8 @@ namespace AVOID
 	/// 패턴이 닿는 거리 = StageProfile 에 적힌 distance 로 정확히 정해진다.
 	/// (이전 테스트용 랜덤 스포너 AttackSpawner 를 대체)
 	/// 프로필은 AvoidSession.StageName(= [startAvoid(이름)] 인자)으로 Resources/Stages/ 에서 고르고,
-	/// 이름이 없거나 못 찾으면 인스펙터의 defaultProfile, 그것도 없으면 기본 패턴을 자동 생성해서 쓴다.
+	/// 이름이 없거나 못 찾으면 인스펙터의 defaultProfile, 그것도 없으면 빈 프로필(패턴 없음)을 쓴다.
+		/// 맵은 직접 배치한다 : 프로필의 mapPrefab(또는 씬)에 놓은 PatternMarker 위치가 곧 패턴 위치.
 	/// </summary>
 	public class StageRunner : MonoBehaviour
 	{
@@ -66,7 +67,7 @@ namespace AVOID
 		/// <summary>
 		/// 지금까지 지나간 패턴 수 (진행 거리 기준)
 		/// </summary>
-		public	int				PatternPassed	=> ( gameController != null && profile != null ) ? profile.CountPassed(gameController.Distance) : 0;
+		public	int				PatternPassed	=> gameController != null ? CountPassed(gameController.Distance) : 0;
 		public	int				PatternLeft		=> PatternTotal - PatternPassed;
 
 		private void Awake()
@@ -77,7 +78,7 @@ namespace AVOID
 			profile = ResolveProfile();
 
 			// 패턴이 거리 순서대로 나가야 하므로 정렬한 복사본을 쓴다
-			sortedPatterns = profile.patterns.ToArray();
+			sortedPatterns = CollectPatterns();
 			System.Array.Sort(sortedPatterns, (a, b) => a.distance.CompareTo(b.distance));
 
 			// 제한시간/목적지는 프로필 값을 따른다 (GameController 의 Start 에서 GameStart 가 불리기 전에 적용됨)
@@ -135,11 +136,68 @@ namespace AVOID
 
 			if ( found == null )
 			{
+				// 맵은 직접 배치하는 것이 원칙이라 랜덤 패턴을 자동 생성하지 않는다 (제한시간/거리는 기본값)
 				found = ScriptableObject.CreateInstance<StageProfile>();
-				found.GenerateDefaultPatterns();
 			}
 
 			return found;
+		}
+
+		// 직접 배치한 맵을 모은다. 우선순위 : 프로필의 mapPrefab → 씬에 놓인 PatternMarker → 프로필의 patterns 목록
+		private PatternEntry[] CollectPatterns()
+		{
+			PatternMarker[] markers;
+
+			if ( profile.mapPrefab != null )
+			{
+				// 맵 프리팹은 원점에 놓고 표식만 읽은 뒤 치운다 (실제 오브젝트는 StageRunner 가 만듦)
+				GameObject map = Instantiate(profile.mapPrefab, Vector3.zero, Quaternion.identity);
+				markers = map.GetComponentsInChildren<PatternMarker>();
+
+				PatternEntry[] fromPrefab = ToEntries(markers);
+				Destroy(map);
+
+				return fromPrefab;
+			}
+
+			markers = FindObjectsByType<PatternMarker>(FindObjectsSortMode.None);
+			if ( markers.Length > 0 )
+			{
+				return ToEntries(markers);
+			}
+
+			if ( profile.patterns.Count == 0 )
+			{
+				Debug.LogWarning("[StageRunner] 배치된 맵이 없습니다. StageProfile 의 Map Prefab 을 지정하거나 씬에 PatternMarker 를 놓으세요");
+			}
+
+			return profile.patterns.ToArray();
+		}
+
+		private static PatternEntry[] ToEntries(PatternMarker[] markers)
+		{
+			PatternEntry[] entries = new PatternEntry[markers.Length];
+
+			for ( int i = 0; i < markers.Length; i ++ )
+			{
+				entries[i] = markers[i].ToEntry();
+			}
+
+			return entries;
+		}
+
+		private int CountPassed(float distance)
+		{
+			int count = 0;
+
+			if ( sortedPatterns == null ) return 0;
+
+			for ( int i = 0; i < sortedPatterns.Length; i ++ )
+			{
+				if ( sortedPatterns[i].distance <= distance ) count ++;
+			}
+
+			return count;
 		}
 
 		private void Spawn(PatternEntry entry, float z)

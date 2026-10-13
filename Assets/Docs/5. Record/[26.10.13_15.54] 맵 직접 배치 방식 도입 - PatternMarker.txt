@@ -1,0 +1,49 @@
+================================================================
+작업 기록 : 맵 직접 배치(롤링스카이식) 방식 도입 - PatternMarker
+작성일 : 2026-10-13 15:54 (KST)
+================================================================
+
+[결정]
+
+  - 맵(장애물 배치)은 랜덤 자동 생성이 아니라 사람이 직접 배치한다.
+    (롤링스카이처럼 맵이 고정, 플레이어는 위치만 조작)
+  - 전진은 이미 "방향키 위를 누르는 동안에만" 이라 자동 진행 아님 (변경 없음)
+
+[코드 변경]
+
+  - PatternMarker.cs (신규) : 빈 오브젝트에 붙이는 표식
+      · Type(Low/High/Slow/Wall), Gap Index(Wall 의 빈 칸, 왼쪽부터 0)
+      · 위치 Z = 플레이어에게 닿는 진행 거리, 위치 X = 좌우 위치
+      · Scene 뷰에 종류별 색 박스 gizmo 로 표시
+  - StageProfile.cs : mapPrefab 필드 추가
+  - StageRunner.cs : 패턴 출처 우선순위
+      1) 프로필의 mapPrefab 안의 PatternMarker
+      2) 씬에 놓인 PatternMarker
+      3) 프로필의 patterns 숫자 목록 (옛 방식, Stage1.asset 호환용)
+    랜덤 자동 생성 폴백 제거 (맵 없으면 경고만, 패턴 없이 진행)
+    PatternPassed 계산을 StageRunner 내부로 이동
+
+[사용법 - 나중에 맵 만들 때]
+
+  1. 빈 프리팹을 만든다 (예: Stage1_Map).
+  2. 그 안에 자식 빈 오브젝트를 만들고 PatternMarker 를 붙인다.
+     - Type 선택 (Wall 이면 Gap Index 도)
+     - Transform 위치로 배치 : Z = 시작점(0)부터의 거리, X = 좌우 (길 반폭 ±4)
+     - Scene 뷰에서 색 박스로 보이므로 보면서 옮기면 된다
+  3. Z 는 goalDistance(기본 600) 안쪽으로 둔다. 시작 직후 여유로
+     60 정도부터 놓는 것을 권장 (기존 기본 패턴 start = 60).
+  4. Resources/Stages/Stage1.asset 의 Map Prefab 에 그 프리팹을 지정.
+     (스테이지 이름은 [startAvoid(이름)] 인자로 고르는 기존 방식 그대로)
+  5. 프리팹 없이 씬에 직접 PatternMarker 를 놓아도 동작 (단독 테스트용).
+     같은 씬에 마커가 있으면 프로필 patterns 목록은 무시됨.
+
+[주의 / 미확인]
+
+  - Unity 에디터에서 컴파일/동작 확인을 아직 하지 않음
+  - 표식 gizmo 크기는 StageRunner 기본 크기(lowSize 등)를 하드코딩해 맞춘
+    값 → 인스펙터에서 크기를 바꾸면 Scene 뷰 표시와 어긋남
+  - StageProfile 의 "Generate Default Patterns" 우클릭 메뉴는 남겨 둠
+    (숫자 목록 초안용). 필요 없으면 제거
+  - 로드맵 문서(1. Plan)는 아직 갱신하지 않음
+  - 스테이지별 맵 프리팹 방식 vs 스테이지별 씬 방식은 프리팹 쪽으로 진행
+    (사용자가 명시적으로 고르진 않음)
