@@ -26,7 +26,14 @@ namespace History
         private List<HistoryLog> logs = new List<HistoryLog>();
 
         public bool isOpen {get; private set;} = false;
+
+        // [미사용 처리 - 26.10.12] 로그 글자 크기 슬라이더
+        // 마우스 없이 키보드/패드 전용으로 조작하는 방향이라 슬라이더를 쓰지 않기로 함
+        // 씬에서도 연결(None)돼 있었고 SetLogScaling()을 호출하는 곳도 없었음
+        // 되살리려면 이 주석과 아래 SetLogScaling() 주석을 풀고 씬에서 Slider 연결 + On Value Changed 등록
+        /*
         [SerializeField] private Slider logScaleSlider;
+        */
 
         private float textScaling => logScaling * 3f;
 
@@ -171,6 +178,9 @@ namespace History
 
         }
 
+        // [미사용 처리 - 26.10.12] 글자 크기 슬라이더용 (위 logScaleSlider 주석 참고)
+        // logScaling 은 기본값 1f 로 고정되어 로그는 항상 기본 크기로 표시됨
+        /*
         public void SetLogScaling()
         {
             logScaling = logScaleSlider.value;
@@ -183,6 +193,7 @@ namespace History
                 FitLogToText(log);
             }
         }
+        */
 
         public void Clear()
         {

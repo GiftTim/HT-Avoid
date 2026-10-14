@@ -1,0 +1,54 @@
+================================================================
+작업 기록 : 리듬 씬(Rythm.unity) 구조 정리 및 Rhythm Quest 구성 정리
+작성일 : 2026-10-14 23:31 (KST)
+================================================================
+
+[해결한 문제]
+
+  1. 타일맵이 z = 1 이 아니면 게임 화면에 안 보임
+     - 원인 : Main Camera 가 z = 0, Near Clip 0.3 → 같은 z = 0 에 있는
+       타일맵이 잘림
+     - 해결 : Main Camera 를 z = -10 으로 (2D 기본값)
+
+  2. @GamePlay / @Camera 가 Screen Space - Overlay Canvas 였음
+     - Overlay Canvas 는 해상도에 따라 위치/스케일이 자동으로 바뀌어
+       게임 오브젝트·카메라의 월드 좌표가 해상도마다 달라짐.
+       @ Environment (960,540) / $Grid (-960,-540) 는 이걸 맞추던 값
+     - 정리 후 (사용자가 에디터에서 작업) : @Gameplay, @Camera 를 빈
+       오브젝트로, Main Camera (0,0,-10), @ Environment / $Grid (0,0,0)
+
+  3. 정리 후 타일맵과 Player 가 같이 안 보임
+     - 원인 : 타일이 $Grid 가 (-960,-540) 이던 때 칠해져서 칸 좌표가
+       (958~962, 538). Grid 를 원점으로 옮기자 화면 밖으로 감
+     - 해결 : 원점 근처에 다시 칠하기 (또는 Select/Move 툴로 이동)
+
+  4. Player 를 클릭해도 타일맵이 선택됨
+     - 하이어라키의 Scene Picking(손가락) 아이콘으로 타일맵 선택 잠금
+
+  5. 프로젝트 설정 : 레이어 UI - Live3D / Player 추가, Sorting Layer
+     순서 Default → Background → NPC → Player → Foreground
+
+[결정 / 합의] (로드맵 R절 "26.10.14 정리"에 반영)
+
+  - 물리 없이 노래 재생 시간 기준으로 진행. 타일맵은 그림 전용,
+    Tilemap Collider 2D 는 쓰지 않음 (이전 대안이던 Composite Collider
+    합치기는 물리를 쓸 경우에만 해당)
+  - 리듬 곡은 VN AudioManager 와 별도 재생기(RhythmConductor 가칭)로,
+    Music 믹서 그룹과 효과음만 공유
+  - Rhythm Quest 식 게임에 필요한 시스템 목록 / 착수 순서 정리
+
+[기타 포함된 변경 (이번 커밋)]
+
+  - HistoryLogManager.cs : 로그 글자 크기 슬라이더(logScaleSlider /
+    SetLogScaling) 주석 처리 (키보드/패드 전용 방향, 26.10.12 표기)
+  - Rythm 타일 에셋 (Assets/Storage/Graphics/Rythm/Tile/), Mina_Standing,
+    Mina_Run 수정, 설정 UI 그림(Lock / Image), Gallery meta, VN 씬 재직렬화
+
+[남은 것 / 다음 세션]
+
+  - 저장된 Rythm.unity 의 Tilemap 에는 Tilemap Collider 2D 가 아직
+    붙어 있음 → 제거
+  - 타일을 원점 근처로 다시 칠할 것 (저장된 씬 기준 아직 (958,538) 근처)
+  - 착수 전 정할 것 : 키 배정, 실패 규칙, 판정 단계, 임시 곡, 채보 작성
+    방식 (로드맵 R절)
+  - 그다음 RhythmConductor(음악 시계)부터 구현
