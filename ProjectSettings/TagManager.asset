@@ -17,9 +17,9 @@ TagManager:
   - UI - Live3D
   - Ground
   - Player
+  - NPC
   - Enemy
-  - 
-  - 
+  - Obstacle
   - 
   - 
   - 
@@ -54,6 +54,9 @@ TagManager:
     locked: 0
   - name: Foreground
     uniqueID: 3440616729
+    locked: 0
+  - name: Obstacle
+    uniqueID: 266734343
     locked: 0
   m_RenderingLayers:
   - Default
