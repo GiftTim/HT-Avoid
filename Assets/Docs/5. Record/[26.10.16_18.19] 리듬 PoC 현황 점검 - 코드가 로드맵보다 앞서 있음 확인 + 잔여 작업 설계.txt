@@ -1,0 +1,51 @@
+================================================================
+2026-10-16 18:19 (KST) 세션 기록
+리듬 PoC 현황 점검 - 코드가 로드맵보다 앞서 있음 확인 + 잔여 작업 설계
+================================================================
+
+[ 한 일 ]
+- "이제 뭘 하면 좋을까" 로 시작. 로드맵 h절 2단계(리듬 PoC) 순서대로
+  진행하기로 정리
+- ① Rythm.unity 정리 완료 여부 확인
+  · TilemapCollider2D / Collider2D / Rigidbody2D 0건 -> 제거 완료
+  · 타일 범위 x -18~114, y -13~-2 (카메라 size 5, 원점 기준 바닥 y -2
+    이 화면 안). 원점 근처 재배치 완료로 판단 (Game 뷰 육안 확인은 못 함)
+- Assets/Scripts/Rythm/ 전체를 읽고 로드맵과 실제 코드를 대조
+- 설계 문서 작성 (코드 변경 없음)
+  -> 2. ChangePlan / [26.10.16_18.03] 리듬 PoC 잔여 작업 - 보스·탄환
+     연출, 곡 종료, VN 연결.txt
+
+[ 발견한 것 ]
+- 로드맵 e절은 "리듬 코어 전부 미구현" 이라 적혀 있으나 실제로는
+  ②~⑥ 이 이미 구현됨
+  · RhythmConductor (dspTime 음악 시계), RhythmPlayerMotion,
+    RhythmCameraFollow, NoteManager (판정), RhythmBattle (HP),
+    ChartData, RhythmScore (점수/피버), RhythmNoteView (임시 원),
+    RhythmDebugRunner (Console 로그)
+- 빈틈
+  · RhythmScore 가 Rythm.unity 에 붙어 있지 않음 (GUID 0건)
+  · 실패(OnFailed) 후 재시작 코드 없음
+  · HP/점수/피버 UI 없음
+  · 보스 없음, 탄환은 임시 원
+  · startAvoid 가 "Avoid" 씬 / AvoidSession 에 묶여 리듬 씬을 못 열음
+  · Esc 일시정지(timeScale 0) 시 dspTime 은 계속 흘러 곡이 어긋남
+  · RhythmBattle 이 마지막 노트 판정 즉시 곡을 Stop -> 곡 꼬리가 잘림
+
+[ 설계 요약 (상세는 ChangePlan 문서) ]
+- A 씬 연결 확인 -> B 실패 후 재시작 -> C 최소 UI -> D 보스+탄환
+  던지기 -> E 곡 종료 모션 -> F VN 연결(startRhythm / RhythmSession)
+  -> G 일시정지 (PoC 이후로 미뤄도 됨)
+- 기본값 : 재시작은 씬 재로드 없이 상태 초기화 / 종료 모션 2초 /
+  결과 변수 $Rhythm.* 신설 (AvoidSession 은 그대로) / 3D 피하기 코드
+  삭제 안 함
+
+[ 다음에 할 것 ]
+- 내일 단계 A 부터 : Rythm.unity 에 RhythmScore 를 붙이고
+  RhythmDebugRunner.score 에 연결 -> 임시 채보로 Play 해서 Console 로그
+  (박/소리 동기, 판정, HP, 피버, 클리어) 확인
+- 작업이 끝나면 로드맵 e절을 실제 상태로 고치고 파일명 타임스탬프 갱신,
+  ChangePlan 을 3. ChangeCompleted 로 이동
+
+[ 미커밋 ]
+- 2. ChangePlan 설계 문서, 이 기록 파일 (코드 변경 없음)
+================================================================
